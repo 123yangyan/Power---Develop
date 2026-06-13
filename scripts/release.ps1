@@ -49,9 +49,9 @@ if ($content -match 'versionCode\s*=\s*(\d+)') {
 }
 
 $content = $content -replace 'versionName\s*=\s*"[^"]*"', "versionName = `"$Version`""
-Set-Content -Path $GradleFile -Value $content -Encoding UTF8 -NoNewline
+Set-Content -Path $GradleFile -Value $content -Encoding UTF8
 
-Set-Content -Path $VersionFile -Value $Version -Encoding UTF8 -NoNewline
+Set-Content -Path $VersionFile -Value "$Version`n" -Encoding UTF8
 
 $commitMsg = if ($Message) { "release: v$Version — $Message" } else { "release: v$Version" }
 
