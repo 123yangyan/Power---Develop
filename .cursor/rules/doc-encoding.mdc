@@ -29,8 +29,9 @@ alwaysApply: true
 [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
 ```
 
-4. **编辑后自检**：读取文件 frontmatter 的 `description` 或首段标题；若出现 `???`、`?` 连续替换符或「心情」变成乱码，**立即用 Write 工具整文件重写 UTF-8**，不要提交乱码版本。
-5. **禁止**用 `git add` 提交已确认乱码的 rule/plan 文件；先修复再 commit。
+4. **禁止**在 Python/shell 字符串中让 `\f` 等转义破坏路径（写 `feature-ledger` 时勿写成 `\feature...`）；路径用正斜杠。
+5. **编辑后自检**：打开文件确认 `description` 与中文标题正常；若出现 `???` 或缺字，用 Write 整文件重写 UTF-8。
+6. **禁止**提交已确认乱码的 rule/plan 文件。
 
 ---
 
@@ -38,6 +39,7 @@ alwaysApply: true
 
 | 错误做法 | 后果 |
 |----------|------|
+| 在 Python 字符串里写 `\feature-ledger` | `\f` 被解析为换页符，丢失字符 |
 | `Set-Content file.mdc $text` 无 `-Encoding` | 按系统 ANSI/GBK 写，破坏 UTF-8 中文 |
 | `Set-Content -NoNewline` 读 UTF-8 再写回 | 同上，且易丢换行 |
 | 在 GBK 终端对 UTF-8 文件做字符串替换 | 部分字符变成 `?` |
@@ -62,5 +64,5 @@ Plan 与 Rule 文件名可含中文（如 `loop心情ai产品规划_9d502bd3.pla
 发现 `.mdc` / `.md` 乱码时：
 
 1. 从 Git 最后一次正常 commit 对比 diff，或按 [`feature-ledger.mdc`](feature-ledger.mdc) / 本文件同级规则的内容意图重写。
-2. 用 Write 工具输出完整 UTF-8 正文。
-3. 在 Cursor 中打开文件确认中文显示正常后再 push。
+2. 用 Write 写入 **新文件名**（如 `xxx-new.mdc`），确认 UTF-8 后删除旧文件并重命名；若同名文件被云同步反复覆盖，必须换名再替换。
+3. 在 Cursor 中打开文件确认中文正常后再 push。

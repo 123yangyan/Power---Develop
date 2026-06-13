@@ -1,0 +1,16 @@
+# EditorConfig: keep docs UTF-8 (see .cursor/rules/doc-encoding.mdc)
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.mdc]
+charset = utf-8
+
+[*.md]
+charset = utf-8
+
+[*.plan.md]
+charset = utf-8
