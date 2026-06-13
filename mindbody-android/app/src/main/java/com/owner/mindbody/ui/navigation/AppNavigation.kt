@@ -16,9 +16,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.owner.mindbody.MainActivity
 import com.owner.mindbody.ui.components.DefaultNavTabs
+import com.owner.mindbody.ui.device.AutoConnectEffect
 import com.owner.mindbody.ui.components.FloatingIslandNav
+import com.owner.mindbody.ui.developer.DeveloperLogScreen
 import com.owner.mindbody.ui.device.DeviceScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
@@ -33,6 +34,7 @@ sealed class AppRoute(val route: String, val label: String) {
     data object MoodHistory : AppRoute("mood_history", "历史")
     data object Sensors : AppRoute("sensors", "传感器")
     data object Device : AppRoute("device", "设备")
+    data object DeveloperLog : AppRoute("developer_log", "运行日志")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
         fun create(deviceId: String) = "ftu/$deviceId"
     }
@@ -65,6 +67,8 @@ fun AppNavigation(initialRoute: String? = null) {
         }
     }
 
+    AutoConnectEffect()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -94,8 +98,14 @@ fun AppNavigation(initialRoute: String? = null) {
                 DeviceScreen(
                     onNavigateToFtu = { deviceId ->
                         navController.navigate(AppRoute.Ftu.create(deviceId))
+                    },
+                    onNavigateToDeveloperLog = {
+                        navController.navigate(AppRoute.DeveloperLog.route)
                     }
                 )
+            }
+            composable(AppRoute.DeveloperLog.route) {
+                DeveloperLogScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoute.Ftu.route) { entry ->
                 val deviceId = entry.arguments?.getString("deviceId") ?: return@composable

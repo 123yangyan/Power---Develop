@@ -1,6 +1,7 @@
 package com.owner.mindbody.ui.device
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
@@ -14,8 +15,14 @@ import kotlinx.coroutines.launch
 
 class DeviceViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private const val UNLOCK_TAP_COUNT = 7
+    }
+
     private val app = application as MindBodyApplication
     private val polar = app.polarBleManager
+
+    private var versionTapCount = 0
 
     val connectionState: StateFlow<ConnectionState> = polar.connectionState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionState.DISCONNECTED)
@@ -40,6 +47,9 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     val connectionMode: StateFlow<ConnectionMode> = polar.connectionMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionMode.PERSISTENT)
+
+    val developerModeEnabled: StateFlow<Boolean> = app.developerPreferences.developerModeEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val sdkVersion: String = polar.sdkVersion()
 
@@ -66,4 +76,17 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setConnectionMode(mode: ConnectionMode) = polar.setConnectionMode(mode)
+
+    /** 连点版本信息区域，满 7 次切换开发者模式。 */
+    fun onVersionAreaTap() {
+        versionTapCount++
+        if (versionTapCount < UNLOCK_TAP_COUNT) return
+        versionTapCount = 0
+        viewModelScope.launch {
+            val enable = !developerModeEnabled.value
+            app.developerPreferences.setDeveloperModeEnabled(enable)
+            val message = if (enable) "开发者模式已开启" else "开发者模式已关闭"
+            Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 }

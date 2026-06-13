@@ -1,10 +1,11 @@
 package com.owner.mindbody.polar
 
 import android.content.Context
-import android.util.Log
 import com.owner.mindbody.data.DevicePreferences
 import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.data.sync.DeviceSyncManager
+import com.owner.mindbody.util.AppLogger
+import com.owner.mindbody.util.BlePermissionHelper
 import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -18,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +71,7 @@ class PolarBleManager(
         private const val RECONNECT_DELAY_MS = 3_000L
         private const val SNAPSHOT_SAMPLE_DURATION_MS = 5_000L
         private const val SNAPSHOT_TIMEOUT_MS = 30_000L
+        private const val AUTO_CONNECT_SCAN_TIMEOUT_MS = 15_000L
     }
 
     private val appContext = context.applicationContext
@@ -129,9 +133,18 @@ class PolarBleManager(
     private var accStreamJob: Job? = null
     private var ppiStreamJob: Job? = null
     private var scanJob: Job? = null
+    private var autoConnectJob: Job? = null
     private var reconnectJob: Job? = null
     private var hrFeatureReady = false
     private var userInitiatedDisconnect = false
+    /** 本进程内是否已尝试过启动自动连，避免反复扫描。 */
+    private var autoConnectAttemptedThisSession = false
+
+    /** 更新 UI 状态文案并写入运行日志缓冲。 */
+    private fun setStatus(message: String) {
+        _statusMessage.value = message
+        AppLogger.i(TAG, message)
+    }
 
     init {
         api.setApiCallback(this)
@@ -147,15 +160,16 @@ class PolarBleManager(
     fun sdkVersion(): String = PolarBleApiDefaultImpl.versionInfo()
 
     fun searchForDevices() {
+        autoConnectJob?.cancel()
         scanJob?.cancel()
         _scannedDevices.value = emptyList()
-        _statusMessage.value = "正在扫描 Polar 设备…"
+        setStatus("正在扫描 Polar 设备…")
         scanJob = scope.launch {
             try {
                 api.searchForDevice()
                     .catch { e ->
-                        Log.e(TAG, "Scan error", e)
-                        _statusMessage.value = "扫描失败：${e.message}"
+                        AppLogger.e(TAG, "Scan error", e)
+                        setStatus("扫描失败：${e.message}")
                     }
                     .collect { info ->
                         val device = ScannedDevice(
@@ -166,11 +180,11 @@ class PolarBleManager(
                         _scannedDevices.value = (_scannedDevices.value + device)
                             .distinctBy { it.deviceId }
                             .sortedByDescending { it.rssi }
-                        _statusMessage.value = "已发现 ${_scannedDevices.value.size} 台设备"
+                        setStatus("已发现 ${_scannedDevices.value.size} 台设备")
                     }
             } catch (e: Exception) {
-                Log.e(TAG, "Search failed", e)
-                _statusMessage.value = "扫描失败：${e.message}"
+                AppLogger.e(TAG, "Search failed", e)
+                setStatus("扫描失败：${e.message}")
             }
         }
     }
@@ -183,13 +197,84 @@ class PolarBleManager(
                 devicePreferences.saveDeviceId(deviceId)
                 api.connectToDevice(deviceId)
             } catch (e: Exception) {
-                Log.e(TAG, "Connect failed", e)
-                _statusMessage.value = "连接失败：${e.message}"
+                AppLogger.e(TAG, "Connect failed", e)
+                setStatus("连接失败：${e.message}")
             }
         }
     }
 
     fun connectSavedDevice(deviceId: String) = connectToDevice(deviceId)
+
+    /**
+     * APP 启动或蓝牙就绪后：扫描已保存设备并连接。
+     * 常连接与短连接模式均会触发；会话内用户主动断开后不会再次自动连。
+     *
+     * @param force 为 true 时忽略「本进程已尝试」标记（如蓝牙从关到开）
+     */
+    fun tryAutoConnectSavedDevice(force: Boolean = false) {
+        // 已有自动连在进行时合并重复触发，避免 cancel 导致 Startup 双入口互相打断
+        if (autoConnectJob?.isActive == true) {
+            AppLogger.d(TAG, "Auto-connect already in progress, skip duplicate trigger")
+            return
+        }
+        autoConnectJob = scope.launch {
+            tryAutoConnectInternal(force)
+        }
+    }
+
+    private suspend fun tryAutoConnectInternal(force: Boolean) {
+        if (!force && autoConnectAttemptedThisSession) return
+        if (!BlePermissionHelper.hasAllPermissions(appContext)) return
+
+        val state = _connectionState.value
+        if (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING) return
+        if (state == ConnectionState.BLE_OFF) return
+
+        val savedId = devicePreferences.savedDeviceId.first()?.takeIf { it.isNotBlank() } ?: return
+
+        setStatus("正在自动连接已保存设备…")
+        scanJob?.cancel()
+
+        try {
+            // 先扫描目标设备（不更新设备页列表），超时则直连兜底
+            try {
+                withTimeout(AUTO_CONNECT_SCAN_TIMEOUT_MS) {
+                    api.searchForDevice()
+                        .catch { e -> AppLogger.w(TAG, "Auto-connect scan error", e) }
+                        .first { info -> info.deviceId == savedId }
+                }
+            } catch (_: TimeoutCancellationException) {
+                AppLogger.d(TAG, "Auto-connect scan timeout, trying direct connect")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Auto-connect scan failed", e)
+            }
+
+            if (_connectionState.value == ConnectionState.CONNECTED ||
+                _connectionState.value == ConnectionState.CONNECTING
+            ) {
+                autoConnectAttemptedThisSession = true
+                return
+            }
+
+            try {
+                userInitiatedDisconnect = false
+                reconnectJob?.cancel()
+                devicePreferences.saveDeviceId(savedId)
+                api.connectToDevice(savedId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Auto-connect failed", e)
+                setStatus("自动连接失败：${e.message}")
+            }
+            autoConnectAttemptedThisSession = true
+        } catch (e: CancellationException) {
+            AppLogger.d(TAG, "Auto-connect cancelled")
+            throw e
+        }
+    }
 
     fun disconnect() {
         val id = _connectedDeviceId.value ?: return
@@ -242,8 +327,8 @@ class PolarBleManager(
                 average
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Snapshot failed", e)
-            _statusMessage.value = "HR 快照失败：${e.message}"
+            AppLogger.e(TAG, "Snapshot failed", e)
+            setStatus("HR 快照失败：${e.message}")
             null
         }
     }
@@ -263,7 +348,7 @@ class PolarBleManager(
             devicePreferences.setFtuDone(done)
             done
         } catch (e: Exception) {
-            Log.e(TAG, "FTU check failed", e)
+            AppLogger.e(TAG, "FTU check failed", e)
             false
         }
     }
@@ -276,10 +361,10 @@ class PolarBleManager(
             api.doFirstTimeUse(deviceId, config)
             devicePreferences.setFtuDone(true)
             _ftuDone.value = true
-            _statusMessage.value = "首次配置完成"
+            setStatus("首次配置完成")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "FTU failed", e)
+            AppLogger.e(TAG, "FTU failed", e)
             Result.failure(e)
         }
     }
@@ -333,7 +418,7 @@ class PolarBleManager(
                 !userInitiatedDisconnect &&
                 _connectionState.value == ConnectionState.DISCONNECTED
             ) {
-                _statusMessage.value = "正在尝试重新连接…"
+                setStatus("正在尝试重新连接…")
                 connectToDevice(deviceId)
             }
         }
@@ -344,8 +429,8 @@ class PolarBleManager(
         hrStreamJob = scope.launch {
             api.startHrStreaming(deviceId)
                 .catch { e ->
-                    Log.e(TAG, "HR stream error", e)
-                    _statusMessage.value = "心率流中断：${e.message}"
+                    AppLogger.e(TAG, "HR stream error", e)
+                    setStatus("心率流中断：${e.message}")
                 }
                 .collect { hrData ->
                     processHrData(hrData)
@@ -362,7 +447,7 @@ class PolarBleManager(
                 try {
                     api.stopHrStreaming(deviceId)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Stop HR stream", e)
+                    AppLogger.w(TAG, "Stop HR stream", e)
                 } finally {
                     storage.hr.flush()
                 }
@@ -386,15 +471,15 @@ class PolarBleManager(
                 ).maxSettings()
                 api.startSkinTemperatureStreaming(deviceId, settings)
                     .catch { e ->
-                        Log.e(TAG, "Skin temp stream error", e)
-                        _statusMessage.value = "皮肤温度流中断：${e.message}"
+                        AppLogger.e(TAG, "Skin temp stream error", e)
+                        setStatus("皮肤温度流中断：${e.message}")
                     }
                     .collect { data ->
                         processSkinTempData(data)
                     }
             } catch (e: Exception) {
-                Log.w(TAG, "Skin temp settings failed", e)
-                _statusMessage.value = "皮肤温度启动失败：${e.message}"
+                AppLogger.w(TAG, "Skin temp settings failed", e)
+                setStatus("皮肤温度启动失败：${e.message}")
             }
         }
     }
@@ -418,15 +503,15 @@ class PolarBleManager(
                 ).maxSettings()
                 api.startAccStreaming(deviceId, settings)
                     .catch { e ->
-                        Log.e(TAG, "ACC stream error", e)
-                        _statusMessage.value = "加速度流中断：${e.message}"
+                        AppLogger.e(TAG, "ACC stream error", e)
+                        setStatus("加速度流中断：${e.message}")
                     }
                     .collect { data ->
                         processAccData(data)
                     }
             } catch (e: Exception) {
-                Log.w(TAG, "ACC settings failed", e)
-                _statusMessage.value = "加速度启动失败：${e.message}"
+                AppLogger.w(TAG, "ACC settings failed", e)
+                setStatus("加速度启动失败：${e.message}")
             }
         }
     }
@@ -446,15 +531,15 @@ class PolarBleManager(
             try {
                 api.startPpiStreaming(deviceId)
                     .catch { e ->
-                        Log.e(TAG, "PPI stream error", e)
-                        _statusMessage.value = "PPI 流中断：${e.message}"
+                        AppLogger.e(TAG, "PPI stream error", e)
+                        setStatus("PPI 流中断：${e.message}")
                     }
                     .collect { data ->
                         processPpiData(data)
                     }
             } catch (e: Exception) {
-                Log.w(TAG, "PPI stream failed", e)
-                _statusMessage.value = "PPI 启动失败：${e.message}"
+                AppLogger.w(TAG, "PPI stream failed", e)
+                setStatus("PPI 启动失败：${e.message}")
             }
         }
     }
@@ -513,6 +598,7 @@ class PolarBleManager(
     // --- PolarBleApiCallback ---
 
     override fun blePowerStateChanged(powered: Boolean) {
+        AppLogger.i(TAG, "blePowerStateChanged powered=$powered")
         _connectionState.value = if (powered) ConnectionState.DISCONNECTED else ConnectionState.BLE_OFF
         if (!powered) {
             _connectedDeviceId.value = null
@@ -520,18 +606,22 @@ class PolarBleManager(
             stopSkinTempStreaming()
             stopAccStreaming()
             stopPpiStreaming()
+        } else {
+            tryAutoConnectSavedDevice(force = true)
         }
     }
 
     override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
         _connectionState.value = ConnectionState.CONNECTING
-        _statusMessage.value = "正在连接 ${polarDeviceInfo.deviceId}…"
+        setStatus("正在连接 ${polarDeviceInfo.deviceId}…")
+        AppLogger.i(TAG, "deviceConnecting id=${polarDeviceInfo.deviceId}")
     }
 
     override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
         _connectionState.value = ConnectionState.CONNECTED
         _connectedDeviceId.value = polarDeviceInfo.deviceId
-        _statusMessage.value = "已连接 ${polarDeviceInfo.deviceId}"
+        setStatus("已连接 ${polarDeviceInfo.deviceId}")
+        AppLogger.i(TAG, "deviceConnected id=${polarDeviceInfo.deviceId}")
         hrFeatureReady = false
         scope.launch {
             checkFtuStatus(polarDeviceInfo.deviceId)
@@ -548,7 +638,11 @@ class PolarBleManager(
         stopSkinTempStreaming()
         stopAccStreaming()
         stopPpiStreaming()
-        _statusMessage.value = "已断开 ${polarDeviceInfo.deviceId}"
+        setStatus("已断开 ${polarDeviceInfo.deviceId}")
+        AppLogger.i(
+            TAG,
+            "deviceDisconnected id=${polarDeviceInfo.deviceId} userInitiated=$userInitiatedDisconnect"
+        )
         if (_connectionMode.value == ConnectionMode.PERSISTENT && !userInitiatedDisconnect) {
             scheduleReconnect(polarDeviceInfo.deviceId)
         }
@@ -579,16 +673,16 @@ class PolarBleManager(
     }
 
     override fun disInformationReceived(identifier: String, uuid: UUID, value: String) {
-        Log.d(TAG, "DIS $uuid = $value")
+        AppLogger.d(TAG, "DIS $uuid = $value")
     }
 
     // SDK 8.0 新增：以 key-value 形式返回设备信息（如固件版本、序列号等）
     override fun disInformationReceived(identifier: String, disInfo: DisInfo) {
-        Log.d(TAG, "DIS ${disInfo.key} = ${disInfo.value}")
+        AppLogger.d(TAG, "DIS ${disInfo.key} = ${disInfo.value}")
     }
 
     // SDK 8.0 新增：体温计数据回调（Loop 心率场景暂不使用，空实现即可）
     override fun htsNotificationReceived(identifier: String, data: PolarHealthThermometerData) {
-        Log.d(TAG, "HTS ${data.celsius}°C")
+        AppLogger.d(TAG, "HTS ${data.celsius}°C")
     }
 }

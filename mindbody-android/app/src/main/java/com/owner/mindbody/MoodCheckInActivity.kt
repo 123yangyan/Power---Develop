@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.ui.mood.MoodRecordViewModel
 import com.owner.mindbody.ui.mood.MoodRecordViewport
 import com.owner.mindbody.ui.mood.RecordViewportVariant
+import com.owner.mindbody.ui.device.AutoConnectEffect
 import com.owner.mindbody.ui.theme.MindBodyColors
 import com.owner.mindbody.ui.theme.MindBodyTheme
 
@@ -30,6 +31,7 @@ class MoodCheckInActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MindBodyTheme {
+                AutoConnectEffect()
                 CheckInContent(onFinish = { finish() })
             }
         }

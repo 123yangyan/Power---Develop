@@ -10,7 +10,7 @@
 
 ---
 
-## 索引（已实现 28 条）
+## 索引（已实现 29 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -30,6 +30,7 @@
 | F-P1-008 | DevicePreferences DataStore | phase1-android-polar |
 | F-P1-009 | 在线传感器流全量落库 | stream-entities |
 | F-P1-010 | 设备离线数据同步落库 | sync-device-manager |
+| F-P1-011 | 开发者模式与运行日志 | phase1-android-polar |
 | F-P2-001 | mood_entries 实体与 Repository | mood-entity |
 | F-P2-002 | ValueEnergyGrid 四象限点选 | value-energy-grid |
 | F-P2-003 | DiaryInput 日记输入 | diary-input |
@@ -182,14 +183,16 @@
 
 #### 已实现方案
 
-- **目的**：Polar Loop 扫描、连接、断开与状态流。
-- **入口**：`MindBodyApplication.polarBleManager`
-- **关键文件**：`polar/PolarBleManager.kt`、`ui/device/DeviceScreen.kt`、`ui/device/DeviceViewModel.kt`
-- **调用约定**：SDK 8.0.0；`ConnectionState` StateFlow 驱动 UI。
-- **验收要点**：真机可扫描连接；常连接模式断线约 3s 自动重连。
+- **目的**：Polar Loop 扫描、连接、断开与状态流；冷启动自动连已保存设备。
+- **入口**：`MindBodyApplication.polarBleManager`；启动自动连 `tryAutoConnectSavedDevice()`
+- **关键文件**：`polar/PolarBleManager.kt`、`ui/device/AutoConnectEffect.kt`、`ui/device/DeviceScreen.kt`、`ui/device/DeviceViewModel.kt`
+- **调用约定**：SDK 8.0.0；`ConnectionState` StateFlow 驱动 UI；`AppNavigation` 挂载 `AutoConnectEffect` 统一请求 BLE 权限并触发自动连；`blePowerStateChanged` 与 `AutoConnectEffect` 重复触发时合并（不 cancel 进行中的 job）；扫描 15s 超时后直连兜底；蓝牙从关到开时 `force=true` 重试；协程被取消时不消耗「本进程已尝试」标记。
+- **验收要点**：真机冷启动可自动连已保存设备；无 `StandaloneCoroutine was cancelled` 导致的假失败；常连接模式断线约 3s 自动重连；短连接模式启动也自动连但用户断开后不重连。
 
 #### 变更记录
 
+- 2026-06-13：修复启动双入口 cancel 导致自动连失败 (#phase1-android-polar)
+- 2026-06-13：启动自动扫描连接已保存设备 (#phase1-android-polar)
 - 2026-06-13：Phase 1 初始实现 (#phase1-android-polar)
 
 ---
@@ -372,6 +375,28 @@
 #### 变更记录
 
 - 2026-06-13：DeviceSyncManager + 8 表 v4 (#sync-device-manager)
+
+---
+
+### F-P1-011 开发者模式与运行日志
+
+| 字段 | 值 |
+|------|-----|
+| Plan | loop心情ai产品规划 / todo: phase1-android-polar |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：隐藏解锁开发者模式，集中展示 App 内 BLE/同步运行日志，支持复制。
+- **入口**：设备页连点版本信息 7 次 →「查看运行日志」→ `DeveloperLogScreen`
+- **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/device/DeviceScreen.kt`
+- **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；`AppLogBuffer` 为每条日志分配单调递增 `id` 供 LazyColumn key；`PolarBleManager.setStatus` 管道化 status 文案；解锁状态持久化 DataStore。
+- **验收要点**：未解锁无入口；日志页可复制全部/选中片段/清空；连接后进入日志页不闪退；启动与自动连日志可见。
+
+#### 变更记录
+
+- 2026-06-13：修复运行日志 LazyColumn 重复 key 闪退 (#phase1-android-polar)
+- 2026-06-13：开发者模式 + 运行日志页 (#phase1-android-polar)
 
 ---
 

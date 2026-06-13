@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.owner.mindbody.BuildConfig
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
 import com.owner.mindbody.ui.components.BleModeRadioGroup
@@ -44,6 +45,7 @@ import com.owner.mindbody.ui.theme.StatValue
 @Composable
 fun DeviceScreen(
     onNavigateToFtu: (String) -> Unit,
+    onNavigateToDeveloperLog: () -> Unit,
     viewModel: DeviceViewModel = viewModel()
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
@@ -54,6 +56,7 @@ fun DeviceScreen(
     val status by viewModel.statusMessage.collectAsState()
     val savedId by viewModel.savedDeviceId.collectAsState()
     val mode by viewModel.connectionMode.collectAsState()
+    val developerMode by viewModel.developerModeEnabled.collectAsState()
 
     Column(
         modifier = Modifier
@@ -217,6 +220,36 @@ fun DeviceScreen(
         scanned.forEach { device ->
             DeviceItem(device = device, onConnect = { viewModel.connect(device.deviceId) })
         }
+
+        if (developerMode) {
+            PremiumCard(contentPadding = 16.dp) {
+                Text(text = "开发者 · 运行日志", style = CardTitle)
+                Text(
+                    text = "查看 App 内 BLE 与同步运行记录，支持复制全部日志。",
+                    style = StatLabel,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Button(
+                    onClick = onNavigateToDeveloperLog,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo),
+                    shape = MindBodyShapes.RadioOption
+                ) {
+                    Text("查看运行日志")
+                }
+            }
+        }
+
+        Text(
+            text = "MindBody v${BuildConfig.VERSION_NAME} · Polar SDK ${viewModel.sdkVersion}",
+            style = StatLabel.copy(color = MindBodyColors.OnBackgroundSecondary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 16.dp)
+                .clickable { viewModel.onVersionAreaTap() }
+        )
     }
 }
 

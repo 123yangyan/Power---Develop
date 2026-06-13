@@ -1,9 +1,9 @@
 package com.owner.mindbody.data.sync
 
-import android.util.Log
 import com.owner.mindbody.data.DeviceSyncPreferences
 import com.owner.mindbody.data.SyncDataType
 import com.owner.mindbody.data.storage.AppStorage
+import com.owner.mindbody.util.AppLogger
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.impl.utils.CaloriesType
 import kotlinx.coroutines.CoroutineScope
@@ -62,7 +62,7 @@ class DeviceSyncManager(
         syncJob = scope.launch {
             syncMutex.withLock {
                 runCatching { syncAll(deviceId) }
-                    .onFailure { Log.e(TAG, "Device sync failed", it) }
+                    .onFailure { AppLogger.e(TAG, "Device sync failed", it) }
             }
         }
     }
@@ -153,7 +153,7 @@ class DeviceSyncManager(
                 val session = api.getTrainingSession(deviceId, reference)
                 PolarDeviceDataMappers.enrichTrainingSession(reference, session)
             }.getOrElse {
-                Log.w(TAG, "Training session fetch failed for ${reference.path}", it)
+                AppLogger.w(TAG, "Training session fetch failed for ${reference.path}", it)
                 PolarDeviceDataMappers.mapTrainingReference(reference)
             }
         }
