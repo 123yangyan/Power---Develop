@@ -1,4 +1,4 @@
-# --- 密钥与本地配置 ---
+# --- 密钥与本地配�?---
 .env
 .env.*
 !.env.example
@@ -25,7 +25,7 @@
 # --- Node / Electron（emotion 参考项目）---
 **/node_modules/
 **/out/
-**/release/
+emotion-2.1.0/**/release/
 **/dist/
 
 # --- Python ---
@@ -39,10 +39,10 @@
 server/nginx/certs/*.pem
 server/nginx/certs/*.key
 
-# --- emotion 含独立 .git，作为本地参考不纳入 monorepo ---
-# 需要纳入时：删除 emotion-2.1.0/emotion-2.1.0/.git 后移除此行并 git add
+# --- emotion 含独�?.git，作为本地参考不纳入 monorepo ---
+# 需要纳入时：删�?emotion-2.1.0/emotion-2.1.0/.git 后移除此行并 git add
 emotion-2.1.0/
 
-# --- Cursor 本地缓存（Plans/Rules 保留）---
+# --- Cursor 本地缓存（Plans/Rules 保留�?--
 .cursor/plans/*.tmp
 .cursor/**/cache/
