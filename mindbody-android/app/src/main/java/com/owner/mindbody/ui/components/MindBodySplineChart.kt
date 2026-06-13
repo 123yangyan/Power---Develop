@@ -37,6 +37,9 @@ fun MindBodySplineChart(
     modifier: Modifier = Modifier
 ) {
     val chartPoints = SplineChartUtils.downsampleByTime(samples)
+    val timeWindow = SplineChartUtils.computeTimeWindow(chartPoints)
+    val bpmRange = SplineChartUtils.computeBpmRange(chartPoints, restingBpm)
+    val timeLabels = SplineChartUtils.formatTimeLabels(timeWindow)
 
     Column(modifier = modifier) {
         Row(
@@ -83,9 +86,8 @@ fun MindBodySplineChart(
             Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
                 val width = size.width
                 val height = size.height
-                val restingY = SplineChartUtils.bpmToY(restingBpm.toFloat(), height)
+                val restingY = SplineChartUtils.bpmToY(restingBpm.toFloat(), height, bpmRange)
 
-                // 背景网格线
                 val gridLines = 4
                 for (i in 1..gridLines) {
                     val y = height * i / (gridLines + 1)
@@ -97,27 +99,27 @@ fun MindBodySplineChart(
                     )
                 }
 
-                // 静息绿区
-                drawRect(
-                    color = MindBodyColors.Emerald.copy(alpha = 0.05f),
-                    topLeft = Offset(0f, restingY),
-                    size = androidx.compose.ui.geometry.Size(width, height - restingY)
-                )
+                if (restingY in 0f..height) {
+                    drawRect(
+                        color = MindBodyColors.Emerald.copy(alpha = 0.05f),
+                        topLeft = Offset(0f, restingY),
+                        size = androidx.compose.ui.geometry.Size(width, height - restingY)
+                    )
 
-                // 静息虚线
-                drawLine(
-                    color = MindBodyColors.Emerald.copy(alpha = 0.6f),
-                    start = Offset(0f, restingY),
-                    end = Offset(width, restingY),
-                    strokeWidth = 1.2f,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
-                )
+                    drawLine(
+                        color = MindBodyColors.Emerald.copy(alpha = 0.6f),
+                        start = Offset(0f, restingY),
+                        end = Offset(width, restingY),
+                        strokeWidth = 1.2f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
+                    )
+                }
 
                 if (chartPoints.size >= 2) {
                     val pixelPoints = chartPoints.map { pt ->
                         Offset(
-                            x = SplineChartUtils.minutesToX(pt.minutesOfDay, width),
-                            y = SplineChartUtils.bpmToY(pt.bpm.toFloat(), height)
+                            x = SplineChartUtils.minutesToX(pt.minutesOfDay, width, timeWindow),
+                            y = SplineChartUtils.bpmToY(pt.bpm.toFloat(), height, bpmRange)
                         )
                     }
 
@@ -150,29 +152,29 @@ fun MindBodySplineChart(
                         color = MindBodyColors.HeartRed,
                         radius = 4f,
                         center = Offset(
-                            SplineChartUtils.minutesToX(pt.minutesOfDay, width),
-                            SplineChartUtils.bpmToY(pt.bpm.toFloat(), height)
+                            SplineChartUtils.minutesToX(pt.minutesOfDay, width, timeWindow),
+                            SplineChartUtils.bpmToY(pt.bpm.toFloat(), height, bpmRange)
                         )
                     )
                 }
             }
 
-            // 静息基准标签
-            Box(
-                modifier = Modifier
-                    .padding(start = 10.dp, top = 90.dp)
-                    .clip(MindBodyShapes.Badge)
-                    .background(MindBodyColors.EmeraldSurface)
-                    .border(1.dp, MindBodyColors.Emerald.copy(alpha = 0.2f), MindBodyShapes.Badge)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "静息基准 $restingBpm BPM",
-                    style = StatLabel.copy(color = MindBodyColors.Emerald)
-                )
+            if (chartPoints.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 10.dp, top = 90.dp)
+                        .clip(MindBodyShapes.Badge)
+                        .background(MindBodyColors.EmeraldSurface)
+                        .border(1.dp, MindBodyColors.Emerald.copy(alpha = 0.2f), MindBodyShapes.Badge)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "静息基准 $restingBpm BPM",
+                        style = StatLabel.copy(color = MindBodyColors.Emerald)
+                    )
+                }
             }
 
-            // 时间刻度
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,7 +182,7 @@ fun MindBodySplineChart(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                listOf("08:00", "12:00", "16:00", "20:00", "24:00").forEach { label ->
+                timeLabels.forEach { label ->
                     Text(text = label, style = StatLabel)
                 }
             }
