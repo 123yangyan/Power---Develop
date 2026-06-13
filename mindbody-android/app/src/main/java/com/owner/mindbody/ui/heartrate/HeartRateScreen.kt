@@ -52,6 +52,7 @@ fun HeartRateScreen(
     viewModel: HeartRateViewModel = viewModel()
 ) {
     val currentHr by viewModel.currentHr.collectAsState()
+    val currentSkinTemp by viewModel.currentSkinTemp.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val samples by viewModel.todaySamples.collectAsState()
     val stats by viewModel.todayStats.collectAsState()
@@ -80,6 +81,8 @@ fun HeartRateScreen(
             bpm = currentHr,
             connectionState = connectionState
         )
+
+        SkinTemperatureCard(tempCelsius = currentSkinTemp)
 
         PremiumCard {
             Row(
@@ -221,4 +224,56 @@ private fun connectionLabel(state: ConnectionState): String = when (state) {
     ConnectionState.CONNECTING -> "连接中…"
     ConnectionState.BLE_OFF -> "请打开手机蓝牙"
     ConnectionState.DISCONNECTED -> "未连接设备"
+}
+
+/** 实时皮肤温度卡片，与 Hero 卡、统计卡风格一致。 */
+@Composable
+private fun SkinTemperatureCard(tempCelsius: Float?) {
+    PremiumCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(text = "皮肤温度", style = CardTitle)
+                Text(
+                    text = "Loop 手腕表面温度",
+                    style = StatLabel.copy(color = MindBodyColors.OnBackgroundSecondary),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(MindBodyShapes.Badge)
+                    .background(MindBodyColors.Amber.copy(alpha = 0.12f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "实时",
+                    style = StatLabel.copy(color = MindBodyColors.Amber)
+                )
+            }
+        }
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text(
+                text = tempCelsius?.let { "%.1f".format(it) } ?: "--",
+                style = BpmHero.copy(
+                    fontSize = 48.sp,
+                    color = MindBodyColors.Amber
+                )
+            )
+            Text(
+                text = "°C",
+                style = StatLabel.copy(
+                    fontSize = 14.sp,
+                    color = MindBodyColors.Amber
+                ),
+                modifier = Modifier.padding(start = 6.dp, bottom = 10.dp)
+            )
+        }
+    }
 }

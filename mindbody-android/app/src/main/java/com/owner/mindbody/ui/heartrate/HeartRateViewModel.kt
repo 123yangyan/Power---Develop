@@ -23,6 +23,9 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
     val currentHr: StateFlow<Int?> = app.polarBleManager.currentHr
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val currentSkinTemp: StateFlow<Float?> = app.polarBleManager.currentSkinTemp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val connectionState: StateFlow<ConnectionState> = app.polarBleManager.connectionState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionState.DISCONNECTED)
 

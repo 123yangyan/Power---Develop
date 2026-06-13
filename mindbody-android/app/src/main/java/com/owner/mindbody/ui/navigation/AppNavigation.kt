@@ -20,10 +20,12 @@ import com.owner.mindbody.ui.components.FloatingIslandNav
 import com.owner.mindbody.ui.device.DeviceScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
+import com.owner.mindbody.ui.sensors.SensorsScreen
 import com.owner.mindbody.ui.theme.MindBodyColors
 
 sealed class AppRoute(val route: String, val label: String) {
     data object HeartRate : AppRoute("heart_rate", "心率")
+    data object Sensors : AppRoute("sensors", "传感器")
     data object Device : AppRoute("device", "设备")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
         fun create(deviceId: String) = "ftu/$deviceId"
@@ -36,7 +38,7 @@ fun AppNavigation() {
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
 
-    val bottomRoutes = listOf(AppRoute.HeartRate, AppRoute.Device)
+    val bottomRoutes = listOf(AppRoute.HeartRate, AppRoute.Sensors, AppRoute.Device)
     val showBottomBar = currentRoute in bottomRoutes.map { it.route }
 
     Box(
@@ -54,6 +56,9 @@ fun AppNavigation() {
         ) {
             composable(AppRoute.HeartRate.route) {
                 HeartRateScreen()
+            }
+            composable(AppRoute.Sensors.route) {
+                SensorsScreen()
             }
             composable(AppRoute.Device.route) {
                 DeviceScreen(

@@ -3,7 +3,8 @@ package com.owner.mindbody.polar
 import android.content.Context
 import android.util.Log
 import com.owner.mindbody.data.DevicePreferences
-import com.owner.mindbody.data.HrRepository
+import com.owner.mindbody.data.storage.AppStorage
+import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -12,6 +13,7 @@ import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarFirstTimeUseConfig
 import com.polar.sdk.api.model.PolarHealthThermometerData
 import com.polar.sdk.api.model.PolarHrData
+import com.polar.sdk.api.model.PolarPpiData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,13 +50,17 @@ data class ScannedDevice(
     val rssi: Int
 )
 
+/** 三轴加速度最新样本（单位：millig）。 */
+data class AccSample(val x: Int, val y: Int, val z: Int)
+
 /**
  * Polar BLE SDK 封装：负责连接、FTU、心率流采集与本地持久化。
  */
 class PolarBleManager(
     context: Context,
-    private val hrRepository: HrRepository,
-    private val devicePreferences: DevicePreferences
+    private val storage: AppStorage,
+    private val devicePreferences: DevicePreferences,
+    private val deviceSyncManager: DeviceSyncManager
 ) : PolarBleApiCallback() {
 
     companion object {
@@ -74,7 +80,11 @@ class PolarBleManager(
             PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TRAINING_DATA
         )
     )
 
@@ -86,6 +96,18 @@ class PolarBleManager(
 
     private val _currentHr = MutableStateFlow<Int?>(null)
     val currentHr: StateFlow<Int?> = _currentHr.asStateFlow()
+
+    /** 当前皮肤温度（摄氏度），来自 Loop 在线流。 */
+    private val _currentSkinTemp = MutableStateFlow<Float?>(null)
+    val currentSkinTemp: StateFlow<Float?> = _currentSkinTemp.asStateFlow()
+
+    /** 当前三轴加速度最新样本。 */
+    private val _currentAcc = MutableStateFlow<AccSample?>(null)
+    val currentAcc: StateFlow<AccSample?> = _currentAcc.asStateFlow()
+
+    /** 最新 PPI（心跳间期）样本。 */
+    private val _latestPpi = MutableStateFlow<PolarPpiData.PolarPpiSample?>(null)
+    val latestPpi: StateFlow<PolarPpiData.PolarPpiSample?> = _latestPpi.asStateFlow()
 
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
@@ -103,6 +125,9 @@ class PolarBleManager(
     val connectionMode: StateFlow<ConnectionMode> = _connectionMode.asStateFlow()
 
     private var hrStreamJob: Job? = null
+    private var skinTempStreamJob: Job? = null
+    private var accStreamJob: Job? = null
+    private var ppiStreamJob: Job? = null
     private var scanJob: Job? = null
     private var reconnectJob: Job? = null
     private var hrFeatureReady = false
@@ -110,6 +135,7 @@ class PolarBleManager(
 
     init {
         api.setApiCallback(this)
+        deviceSyncManager.attachApi(api)
         scope.launch {
             devicePreferences.ftuDone.collect { _ftuDone.value = it }
         }
@@ -170,6 +196,9 @@ class PolarBleManager(
         userInitiatedDisconnect = true
         reconnectJob?.cancel()
         stopHrStreaming()
+        stopSkinTempStreaming()
+        stopAccStreaming()
+        stopPpiStreaming()
         api.disconnectFromDevice(id)
     }
 
@@ -221,6 +250,9 @@ class PolarBleManager(
 
     fun shutdown() {
         stopHrStreaming()
+        stopSkinTempStreaming()
+        stopAccStreaming()
+        stopPpiStreaming()
         api.shutDown()
     }
 
@@ -332,15 +364,135 @@ class PolarBleManager(
                 } catch (e: Exception) {
                     Log.w(TAG, "Stop HR stream", e)
                 } finally {
-                    hrRepository.flush()
+                    storage.hr.flush()
                 }
             }
         } else {
             scope.launch {
-                hrRepository.flush()
+                storage.hr.flush()
             }
         }
         _currentHr.value = null
+    }
+
+    /** 启动皮肤温度在线流（需 FEATURE_POLAR_ONLINE_STREAMING 就绪）。 */
+    private fun startSkinTempStreaming(deviceId: String) {
+        if (skinTempStreamJob?.isActive == true) return
+        skinTempStreamJob = scope.launch {
+            try {
+                val settings = api.requestStreamSettings(
+                    deviceId,
+                    PolarBleApi.PolarDeviceDataType.SKIN_TEMPERATURE
+                ).maxSettings()
+                api.startSkinTemperatureStreaming(deviceId, settings)
+                    .catch { e ->
+                        Log.e(TAG, "Skin temp stream error", e)
+                        _statusMessage.value = "皮肤温度流中断：${e.message}"
+                    }
+                    .collect { data ->
+                        processSkinTempData(data)
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "Skin temp settings failed", e)
+                _statusMessage.value = "皮肤温度启动失败：${e.message}"
+            }
+        }
+    }
+
+    /** 停止皮肤温度流并清空当前读数。 */
+    private fun stopSkinTempStreaming() {
+        skinTempStreamJob?.cancel()
+        skinTempStreamJob = null
+        scope.launch { storage.skinTemp.flush() }
+        _currentSkinTemp.value = null
+    }
+
+    /** 启动加速度在线流（需 FEATURE_POLAR_ONLINE_STREAMING 就绪）。 */
+    private fun startAccStreaming(deviceId: String) {
+        if (accStreamJob?.isActive == true) return
+        accStreamJob = scope.launch {
+            try {
+                val settings = api.requestStreamSettings(
+                    deviceId,
+                    PolarBleApi.PolarDeviceDataType.ACC
+                ).maxSettings()
+                api.startAccStreaming(deviceId, settings)
+                    .catch { e ->
+                        Log.e(TAG, "ACC stream error", e)
+                        _statusMessage.value = "加速度流中断：${e.message}"
+                    }
+                    .collect { data ->
+                        processAccData(data)
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "ACC settings failed", e)
+                _statusMessage.value = "加速度启动失败：${e.message}"
+            }
+        }
+    }
+
+    /** 停止加速度流并清空当前读数。 */
+    private fun stopAccStreaming() {
+        accStreamJob?.cancel()
+        accStreamJob = null
+        scope.launch { storage.acc.flush() }
+        _currentAcc.value = null
+    }
+
+    /** 启动 PPI 在线流（无需额外 settings）。 */
+    private fun startPpiStreaming(deviceId: String) {
+        if (ppiStreamJob?.isActive == true) return
+        ppiStreamJob = scope.launch {
+            try {
+                api.startPpiStreaming(deviceId)
+                    .catch { e ->
+                        Log.e(TAG, "PPI stream error", e)
+                        _statusMessage.value = "PPI 流中断：${e.message}"
+                    }
+                    .collect { data ->
+                        processPpiData(data)
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "PPI stream failed", e)
+                _statusMessage.value = "PPI 启动失败：${e.message}"
+            }
+        }
+    }
+
+    /** 停止 PPI 流并清空当前读数。 */
+    private fun stopPpiStreaming() {
+        ppiStreamJob?.cancel()
+        ppiStreamJob = null
+        scope.launch { storage.ppi.flush() }
+        _latestPpi.value = null
+    }
+
+    private suspend fun processSkinTempData(data: com.polar.sdk.api.model.PolarTemperatureData) {
+        for (sample in data.samples) {
+            _currentSkinTemp.value = sample.temperature
+            storage.skinTemp.saveSample(
+                timestamp = System.currentTimeMillis(),
+                temperatureC = sample.temperature
+            )
+        }
+    }
+
+    private suspend fun processAccData(data: com.polar.sdk.api.model.PolarAccelerometerData) {
+        val now = System.currentTimeMillis()
+        for (sample in data.samples) {
+            _currentAcc.value = AccSample(x = sample.x, y = sample.y, z = sample.z)
+            storage.acc.ingestSample(sample.x, sample.y, sample.z, now)
+        }
+    }
+
+    private suspend fun processPpiData(data: PolarPpiData) {
+        for (sample in data.samples) {
+            _latestPpi.value = sample
+            storage.ppi.saveSample(
+                timestamp = System.currentTimeMillis(),
+                sample = sample
+            )
+        }
     }
 
     private suspend fun processHrData(hrData: PolarHrData) {
@@ -349,7 +501,7 @@ class PolarBleManager(
             if (hr > 0) {
                 _currentHr.value = hr
                 val rr = sample.rrsMs.firstOrNull()
-                hrRepository.saveSample(
+                storage.hr.saveSample(
                     timestamp = System.currentTimeMillis(),
                     bpm = hr,
                     rrMs = rr
@@ -365,6 +517,9 @@ class PolarBleManager(
         if (!powered) {
             _connectedDeviceId.value = null
             stopHrStreaming()
+            stopSkinTempStreaming()
+            stopAccStreaming()
+            stopPpiStreaming()
         }
     }
 
@@ -388,7 +543,11 @@ class PolarBleManager(
         _connectedDeviceId.value = null
         _currentHr.value = null
         hrFeatureReady = false
+        deviceSyncManager.resetFeatureFlags()
         stopHrStreaming()
+        stopSkinTempStreaming()
+        stopAccStreaming()
+        stopPpiStreaming()
         _statusMessage.value = "已断开 ${polarDeviceInfo.deviceId}"
         if (_connectionMode.value == ConnectionMode.PERSISTENT && !userInitiatedDisconnect) {
             scheduleReconnect(polarDeviceInfo.deviceId)
@@ -396,9 +555,22 @@ class PolarBleManager(
     }
 
     override fun bleSdkFeatureReady(identifier: String, feature: PolarBleApi.PolarBleSdkFeature) {
-        if (feature == PolarBleApi.PolarBleSdkFeature.FEATURE_HR) {
-            hrFeatureReady = true
-            startHrStreaming(identifier)
+        when (feature) {
+            PolarBleApi.PolarBleSdkFeature.FEATURE_HR -> {
+                hrFeatureReady = true
+                startHrStreaming(identifier)
+            }
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
+                startSkinTempStreaming(identifier)
+                startAccStreaming(identifier)
+                startPpiStreaming(identifier)
+            }
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TRAINING_DATA -> {
+                deviceSyncManager.onFeatureReady(identifier, feature)
+            }
+            else -> Unit
         }
     }
 

@@ -10,7 +10,7 @@
 
 ---
 
-## 索引（已实现 14 条）
+## 索引（已实现 16 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -28,6 +28,8 @@
 | F-P1-006 | 心率页 UI 与统计曲线 | phase1-android-polar |
 | F-P1-007 | 设备页与配对引导 | phase1-android-polar |
 | F-P1-008 | DevicePreferences DataStore | phase1-android-polar |
+| F-P1-009 | 在线传感器流全量落库 | stream-entities |
+| F-P1-010 | 设备离线数据同步落库 | sync-device-manager |
 
 路径均相对于 `app/src/main/java/com/owner/mindbody/`。
 
@@ -86,13 +88,13 @@
 #### 已实现方案
 
 - **目的**：schema 可演进且不丢数据。
-- **关键文件**：`data/local/AppDatabase.kt`（v2、`MIGRATION_1_2`）、`app/build.gradle.kts`（KSP schema）、`app/schemas/.../2.json`
+- **关键文件**：`data/local/AppDatabase.kt`（v4、`MIGRATION_1_2`/`2_3`/`3_4`）、`app/build.gradle.kts`（KSP schema）
 - **调用约定**：**禁止** `fallbackToDestructiveMigration`；版本 +1 必须加 Migration。
 - **验收要点**：WAL 已开启；exportSchema=true。
 
 #### 变更记录
 
-- 2026-06-13：v2 + MIGRATION_1_2 (#migration-framework)
+- 2026-06-13：v4 + MIGRATION_2_3/3_4（手环全量数据落库）
 
 ---
 
@@ -129,7 +131,7 @@
 - **入口**：`MindBodyApplication.storage` → `AppStorage`
 - **关键文件**：`data/storage/AppStorage.kt`、`MindBodyApplication.kt`
 - **调用约定**：UI/ViewModel 用 `app.storage.hr`，禁止直接 `AppDatabase` / `HrRepository()`。
-- **验收要点**：`HeartRateViewModel`、`DeviceViewModel` 经 storage 访问。
+- **验收要点**：`HeartRateViewModel`、`DeviceViewModel` 经 storage 访问；扩展后含 `skinTemp`/`acc`/`ppi`/`activityDay`/`sleep`/`training` 等。
 
 #### 变更记录
 
@@ -211,7 +213,7 @@
 
 - **目的**：`startHrStreaming` 持续采集并落库，后台保活。
 - **关键文件**：`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`、`ui/heartrate/HeartRateScreen.kt`
-- **调用约定**：HR 样本经 `hrRepository.saveSample` → buffer；心率页进入时启动前台服务。
+- **调用约定**：HR 样本经 `storage.hr.saveSample` → buffer；心率页进入时启动前台服务。
 - **验收要点**：实时 BPM 显示；样本写入 Room。
 
 #### 变更记录
@@ -315,7 +317,49 @@
 
 #### 变更记录
 
-- 2026-06-13：DataStore 偏好 (#phase1-android-polar)
+- 2026-06-13：扩展多 Repository + deviceSync (#stream-appstorage)
+
+---
+
+### F-P1-009 在线传感器流全量落库
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 手环全量数据落库 / todo: stream-entities |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：皮肤温度、ACC（分钟聚合）、PPI 在线流持久化到 Room。
+- **入口**：`PolarBleManager` → `processSkinTempData` / `processAccData` / `processPpiData`
+- **关键文件**：`data/local/SkinTempSampleEntity.kt`、`AccMinuteSummaryEntity.kt`、`PpiSampleEntity.kt`；`data/SkinTempRepository.kt`、`AccRepository.kt`、`PpiRepository.kt`、`EntitySampleBuffer.kt`
+- **调用约定**：ACC 原始 ~200Hz 仅内存聚合，每分钟一条 `acc_minute_summary`；断连时 `storage.flushAll()` 落盘。
+- **验收要点**：常连接模式下三路流写入对应表；`COUNT(*)` 随采集增长。
+
+#### 变更记录
+
+- 2026-06-13：在线流三表 + Repository (#stream-entities)
+
+---
+
+### F-P1-010 设备离线数据同步落库
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 手环全量数据落库 / todo: sync-device-manager |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：连接后从 Loop 拉取睡眠/活动/训练/24-7 样本等设备内汇总数据并落库。
+- **入口**：`PolarBleManager.bleSdkFeatureReady` → `DeviceSyncManager.onFeatureReady`
+- **关键文件**：`data/sync/DeviceSyncManager.kt`、`PolarDeviceDataMappers.kt`；8 张同步表 Entity/Dao；`DeviceSyncPreferences.kt`
+- **调用约定**：启用 `FEATURE_POLAR_ACTIVITY_DATA` / `SLEEP_DATA` / `TRAINING_DATA`；增量同步日期存 DataStore；读写经 `app.storage.*`。
+- **验收要点**：连接真机后 activity_day_summary、hr_247_samples、sleep_sessions 等有新行；重复连接不重复拉已同步日期（默认回溯 7 天）。
+
+#### 变更记录
+
+- 2026-06-13：DeviceSyncManager + 8 表 v4 (#sync-device-manager)
 
 ---
 

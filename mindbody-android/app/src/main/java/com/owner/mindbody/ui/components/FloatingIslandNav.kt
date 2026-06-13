@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -98,5 +99,6 @@ fun FloatingIslandNav(
 
 val DefaultNavTabs = listOf(
     NavTabItem("heart_rate", "心率", Icons.Default.Favorite),
+    NavTabItem("sensors", "传感器", Icons.Default.GraphicEq),
     NavTabItem("device", "设备", Icons.Default.Settings)
 )
