@@ -4,19 +4,11 @@
 
 - **主产品**：[`mindbody-android/`](mindbody-android/) — Polar Loop + 心情记录 + AI 指导（Android）
 - **后端**：[`server/`](server/) — FastAPI + 百炼融合 Pipeline（Phase 3）
-- **规划**： [`.cursor/plans/`](.cursor/plans/) · [`.cursor/rules/`](.cursor/rules/) · [功能实现清单](.cursor/FEATURE-LEDGER.md)
+- **规划**： [`.cursor/plans/`](.cursor/plans/) · [`.cursor/rules/`](.cursor/rules/)
 
 远程仓库：[123yangyan/Power---Develop](https://github.com/123yangyan/Power---Develop)
 
----
-
-## 功能实现清单（Agent 执行前必读）
-
-[`.cursor/FEATURE-LEDGER.md`](.cursor/FEATURE-LEDGER.md) 记录每个功能点的**已实现方案**与**待实施方案**（共 38 条，P0/P1 已回填）。
-
-- **alwaysApply 规则**自动注入：执行前读清单、执行后更新清单
-- 对 Agent 说：「按 F-P2-001 待实施方案实现 mood 实体」
-- 规则文件：`.cursor/rules/feature-ledger.mdc`
+**mindbody-android 功能清单**（仅已实现）：[`mindbody-android/FEATURE-LEDGER.md`](mindbody-android/FEATURE-LEDGER.md)
 
 ---
 

@@ -225,6 +225,7 @@ flowchart TB
 ## 相关文档
 
 - [README.md](./README.md) — 开发环境、运行步骤、项目结构
+- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — 已实现功能施工清单（Agent 必读，不含待做项）
 - [主路线图 Plan](../.cursor/plans/loop心情ai产品规划_9d502bd3.plan.md) — 总体愿景、API/数据模型
 - [统一存储核心 Plan](../.cursor/plans/统一存储核心模块_5f5a20f2.plan.md) — P0 已完成
 - [Phase 2 心情记录 Plan](../.cursor/plans/phase2心情记录移植.plan.md)

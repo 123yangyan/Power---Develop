@@ -65,3 +65,9 @@ app/src/main/java/com/owner/mindbody/
 
 - 移植 emotion 心情记录（坐标 + 日记）
 - 记录时刻关联本地 HR 快照
+
+## 相关文档
+
+- [PRODUCT.md](./PRODUCT.md) — 产品说明与路线图
+- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — **已实现功能**施工清单（Agent 执行 mindbody-android 任务前必读）
+- [`.cursor/plans/`](../.cursor/plans/) — Phase 待做特性设计
