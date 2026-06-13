@@ -20,9 +20,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         NightlyRechargeEntity::class,
         ActivityMinuteSampleEntity::class,
         SleepSessionEntity::class,
-        TrainingSessionEntity::class
+        TrainingSessionEntity::class,
+        MoodEntryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activityMinuteSampleDao(): ActivityMinuteSampleDao
     abstract fun sleepSessionDao(): SleepSessionDao
     abstract fun trainingSessionDao(): TrainingSessionDao
+    abstract fun moodEntryDao(): MoodEntryDao
 
     companion object {
         @Volatile
@@ -321,6 +323,36 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 -> v5：心情记录表 mood_entries。 */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS mood_entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        fact TEXT NOT NULL,
+                        coordX INTEGER NOT NULL,
+                        coordY INTEGER NOT NULL,
+                        occurredAt INTEGER NOT NULL,
+                        hrAtEntry INTEGER,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncState TEXT NOT NULL,
+                        remoteId TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_mood_entries_occurredAt ON mood_entries(occurredAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_mood_entries_syncState ON mood_entries(syncState)")
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_mood_entries_occurredAt_syncState
+                    ON mood_entries(occurredAt, syncState)
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -328,7 +360,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mindbody.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .build()
                     .also { instance = it }

@@ -1,31 +1,52 @@
 ---
 name: Phase2心情记录移植
-overview: 将 emotion-2.1.0 的价值感×耗能坐标、日记输入、定时提醒与历史列表移植为 Jetpack Compose 组件；通过 AppStorage 接入 mood_entries 实体，记录时刻关联本地 HR 快照（±5 分钟窗口或短连接 connectForSnapshot）。
+overview: 以 emotion **v3.7.0**（目录 emotion-2.1.0，package 版本 3.7.0）为真相源，将价值感×耗能坐标、日记输入、定时提醒与历史列表移植为 Jetpack Compose；经 AppStorage 接入 mood_entries，记录时刻关联本地 HR 快照。Wave 1 核心闭环已完成；Wave 2 对齐 v3.7 UX 见子 Plan phase2_对齐_emotion_v3.7。
 todos:
   - id: mood-entity
-    content: 新建 MoodEntryEntity + MoodEntryDao + MIGRATION_2_3，AppStorage 暴露 mood Repository
-    status: pending
+    content: 新建 MoodEntryEntity + MoodEntryDao + MIGRATION_4_5（v4→v5），AppStorage 暴露 mood Repository
+    status: completed
   - id: value-energy-grid
     content: 移植 ValueEnergyGrid 四象限点选为 Compose 组件（coord_x/coord_y -4~+4）
-    status: pending
+    status: completed
   - id: diary-input
-    content: 移植 DiaryInput 日记输入组件
-    status: pending
+    content: 移植 DiaryInput 日记输入组件（含 v3.7 Enter 列表续号）
+    status: completed
   - id: mood-record-screen
-    content: 记录页 MoodRecordForm 组装（坐标+日记+提交），接入 ViewModel 经 app.storage.mood
-    status: pending
+    content: 记录页 MoodRecordViewport 组装（坐标+日记+提交），接入 ViewModel 经 app.storage.mood
+    status: completed
   - id: hr-snapshot
     content: 保存 mood 时关联 HR 快照（查询 ±5min 样本均值，或短连接模式调用 connectForSnapshot）
-    status: pending
+    status: completed
   - id: reminder
-    content: WorkManager 定时提醒（替代 emotion daily-checkin-service），保存后仍按间隔提醒
-    status: pending
+    content: WorkManager 定时提醒 + strongPopup/snooze/逃避记录（对齐 daily-checkin-service）
+    status: completed
   - id: history-screen
-    content: 历史列表 EntryHistoryPage 移植（列表、预览、编辑、删除）
-    status: pending
+    content: 历史列表 EntryHistoryPage 移植（CoordMiniBadge、极性、分页跳转、daily index）
+    status: completed
   - id: navigation
     content: 底部导航增加「记录」「历史」页签，与现有心率/设备页整合
-    status: pending
+    status: completed
+  - id: wave-a-diary-continue
+    content: Wave A1：diaryListContinue + DiaryInput Enter 续号
+    status: completed
+  - id: wave-a-daily-index
+    content: Wave A2：dailyEntryIndex 记录页/历史页同日序号
+    status: completed
+  - id: wave-a-record-viewport
+    content: Wave A3：MoodRecordViewport 布局
+    status: completed
+  - id: wave-a-settings-ui
+    content: Wave A4：静默时段/strongPopup 可编辑 UI
+    status: completed
+  - id: wave-b-checkin-dialog
+    content: Wave B1：MoodCheckInDialog + strongPopup 双通道
+    status: completed
+  - id: wave-b-snooze-avoidance
+    content: Wave B2：Esc snooze + 逃避记录 + 20min 短间隔
+    status: completed
+  - id: wave-c-history-polish
+    content: Wave C：CoordMiniBadge、极性/逃避样式、分页跳转
+    status: completed
 isProject: false
 ---
 
@@ -36,129 +57,105 @@ isProject: false
 | 项 | 说明 |
 |----|------|
 | **优先级** | P2（见 [project-priority.mdc](../rules/project-priority.mdc)） |
+| **真相源** | emotion **v3.7.0**（[`CHANGELOG.md`](../../emotion-2.1.0/emotion-2.1.0/CHANGELOG.md)；目录名 `emotion-2.1.0` 与 package 版本不一致） |
 | **前置** | P0 统一存储核心 ✅、P1 BLE/心率 ✅ |
 | **阻塞** | Phase 3 云端同步需本 Phase 的 `mood_entries` 本地实体就绪 |
 | **父 Plan** | [loop心情ai产品规划_9d502bd3.plan.md](./loop心情ai产品规划_9d502bd3.plan.md) |
+| **对齐子 Plan** | [phase2_对齐_emotion_v3.7_95d52584.plan.md](./phase2_对齐_emotion_v3.7_95d52584.plan.md) |
 
 ---
 
 ## 设计目标
 
-- 在 Android App 内完成 emotion **核心记录体验**，不依赖 Windows Electron
+- 在 Android App 内完成 emotion **v3.7 记录/历史/提醒 UX**，不依赖 Windows Electron
 - 所有数据读写经 **`AppStorage`** 门面，遵循存储核心 4 步接入约定
-- 每条心情记录可附带 **记录时刻 HR 估计值**（本地关联，无需网络）
+- 每条心情记录可附带 **记录时刻 HR 估计值**（MindBody 扩展，emotion 无此列）
 
----
-
-## 目标架构
-
-```mermaid
-flowchart TB
-    subgraph ui [Compose UI]
-        RecordTab[记录页]
-        HistoryTab[历史页]
-        Grid[ValueEnergyGrid]
-        Diary[DiaryInput]
-    end
-
-    subgraph vm [ViewModel]
-        MoodVM[MoodViewModel]
-    end
-
-    subgraph storage [AppStorage]
-        MoodRepo[MoodRepository]
-        HrRepo[HrRepository]
-    end
-
-    subgraph polar [Polar BLE]
-        Snapshot[connectForSnapshot]
-    end
-
-    RecordTab --> Grid
-    RecordTab --> Diary
-    RecordTab --> MoodVM
-    HistoryTab --> MoodVM
-    MoodVM --> MoodRepo
-    MoodVM --> HrRepo
-    MoodVM -.短连接模式.-> Snapshot
-    Snapshot --> HrRepo
-```
+**不在 Phase 2 范围**：Dashboard 仪表、AI 洞察、JSON 备份、18:00 疲劳弹窗（v3.7 已移除）、legacy 字段 Room 列（Phase 3 导入再议）。
 
 ---
 
 ## 数据模型（Room）
 
-新建 `MoodEntryEntity`（对齐 emotion `EntryRow`）：
+`MoodEntryEntity`（对齐 emotion v3.7 **新记录写入子集**）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | Long PK | 自增 |
-| `fact` | String | 日记正文 |
+| `fact` | String | 日记正文；逃避记录为 `逃避记录` |
 | `coord_x` | Int | 价值感 -4~+4 |
 | `coord_y` | Int | 耗能度 -4~+4 |
 | `occurred_at` | Long | 记录发生时间戳 |
-| `hr_at_entry` | Int? | 关联 HR 快照（保存时计算） |
+| `hr_at_entry` | Int? | 关联 HR 快照（MindBody 扩展） |
 | `sync` | SyncMeta | `@Embedded`，沿用 P0 约定 |
 
-象限由 coord 推导（与 emotion 一致）：攻坚区 / 心流区 / 机械区 / 内耗陷阱。
+v3.7 新记录不写 `thought/body_tags/fatigue_check`；逃避记录识别：`fact==逃避记录 && coord(0,0)`。
 
 **接入步骤（存储 4 步）：**
 1. `MoodEntryEntity` + `SyncMeta`
 2. `MoodEntryDao` implements `SyncableDao`
-3. `AppDatabase` v2→v3 + `MIGRATION_2_3`
+3. `AppDatabase` **v4→v5** + `MIGRATION_4_5`
 4. `AppStorage.mood: MoodRepository`
 
 ---
 
-## UI 移植对照
+## UI 移植对照（v3.7）
 
-| emotion 源文件 | Android 目标 | todo |
+| emotion 源文件 | Android 目标 | 状态 |
 |----------------|--------------|------|
-| `ValueEnergyGrid.tsx` | `ui/mood/ValueEnergyGrid.kt` | value-energy-grid |
-| `DiaryInput.tsx` | `ui/mood/DiaryInput.kt` | diary-input |
-| `MoodRecordForm.tsx` | `ui/mood/MoodRecordScreen.kt` | mood-record-screen |
-| `EntryHistoryPage.tsx` | `ui/mood/MoodHistoryScreen.kt` | history-screen |
+| `ValueEnergyGrid.tsx` | `ui/mood/ValueEnergyGrid.kt` | ✅ |
+| `DiaryInput.tsx` + `diaryListContinue.ts` | `DiaryInput.kt` + `DiaryListContinue.kt` | ✅ |
+| `RecordViewportForm.tsx` | `ui/mood/MoodRecordViewport.kt` | ✅ |
+| `MoodRecordForm.tsx` | `MoodRecordScreen.kt` + `MoodRecordViewModel.kt` | ✅ |
+| `dailyEntryIndex.ts` | `ui/mood/DailyEntryIndex.kt` | ✅ |
+| `EntryHistoryPage.tsx` + `historyRowPreview.ts` | `MoodHistoryScreen.kt` + `MoodHistoryRowBuilder.kt` | ✅ |
+| `CoordMiniBadge.tsx` | `ui/mood/CoordMiniBadge.kt` | ✅ |
+| `CheckInPanel.tsx` + `daily-checkin-service.ts` | `MoodCheckInActivity` + `MoodReminderWorker` | ✅ |
+| `SettingsPage.tsx`（提醒节） | `MoodSettingsSection.kt` | ✅ |
 
-参考路径：[emotion-2.1.0/emotion-2.1.0/src/renderer/src/components/](emotion-2.1.0/emotion-2.1.0/src/renderer/src/components/)
-
----
-
-## HR 快照关联规则
-
-保存 `mood_entry` 时：
-
-1. **常连接模式**：从 `storage.hr` 查询 `occurred_at ± 5 分钟` 内样本，取 BPM 均值写入 `hr_at_entry`
-2. **短连接模式**：若窗口内无样本，调用 [PolarBleManager.connectForSnapshot](mindbody-android/app/src/main/java/com/owner/mindbody/polar/PolarBleManager.kt) 采集约 5 秒后写入
-3. UI 标注「估计关联」，不做医疗级断言
+参考路径：[emotion-2.1.0/emotion-2.1.0/src/renderer/src/](../../emotion-2.1.0/emotion-2.1.0/src/renderer/src/)
 
 ---
 
-## 定时提醒
+## HR 快照关联规则（MindBody 扩展）
 
-- 使用 **WorkManager** `PeriodicWorkRequest`（替代 emotion `daily-checkin-service`）
-- 设置项：提醒间隔、静默时段（DataStore 持久化，可参考 emotion 设置页逻辑）
-- **保存后仍按间隔提醒**（与 emotion v3 行为一致）
+1. 常连接：`storage.hr` 查询 `occurred_at ± 5 分钟` BPM 均值
+2. 短连接：无样本时 `connectForSnapshot`
+3. UI 标注「估计关联」，非医疗诊断
 
 ---
 
-## 文件变更清单（预期）
+## 定时提醒（对齐 v3.7 daily-checkin-service）
 
-**新建：**
-- `data/local/MoodEntryEntity.kt`、`MoodEntryDao.kt`、`MoodRepository.kt`
-- `ui/mood/` 下 Compose 组件与 ViewModel
-- `worker/MoodReminderWorker.kt`
+```
+shouldPrompt → 静默? → 距 lastReminderAt < effectiveInterval? → 跳过
+effectiveInterval = 今日 snoozeCount>0 ? 20min : reminderIntervalMinutes
+deliver = 通知 + (strongPopup ? CheckInActivity : 仅通知 deep link)
+保存成功 → lastReminderAt=now（仍继续间隔提醒）
+Esc/稍后 → 写逃避记录 + snoozeCount++ → 20min 短间隔
+```
 
-**改造：**
-- `data/local/AppDatabase.kt`（v3 + migration）
-- `data/storage/AppStorage.kt`（暴露 `mood`）
-- 主导航 / `MainActivity`（新增页签）
+- WorkManager 15min 轮询；间隔逻辑 1–1440 分钟（DataStore）
+- 设置：间隔、静默时段、通知开关、strongPopup（DataStore）
+
+---
+
+## 平台差异
+
+| emotion | Android |
+|---------|---------|
+| 760×620 置顶窗 | `MoodCheckInActivity` 全屏 |
+| setInterval 10–60s | WorkManager 15min + Worker 内判断 |
+| 北京时间 | 系统时区 + 本地日历日序号 |
+| HR 快照 | MindBody 独有 |
 
 ---
 
 ## 验收标准
 
-1. 全流程不依赖 Windows；可在真机完成「点选坐标 → 写日记 → 保存 → 历史查看/编辑」
-2. 每条 mood 记录带有 `hr_at_entry`（有 HR 数据时）或明确为空（无手环时仍可记录）
-3. 定时提醒到点可打开记录页；设置静默时段内不弹
-4. 所有 mood 读写经 `app.storage.mood`，无绕过 AppStorage 的直接 DAO 调用
-5. `getUnsynced()` 可返回未同步 mood 记录，为 Phase 3 上报就绪
+1. 真机完成「点选 → 日记（Enter 续号）→ 保存 → 历史查看/编辑」
+2. `hr_at_entry` 有值或明确为空
+3. 提醒：静默不弹；strongPopup 可关；Esc 写逃避记录；20min snooze
+4. 记录页/历史页显示同日序号
+5. 所有 mood 读写经 `app.storage.mood`
+6. `getUnsynced()` 为 Phase 3 就绪

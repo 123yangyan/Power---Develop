@@ -87,5 +87,8 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // WorkManager（Phase 2 心情提醒）
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

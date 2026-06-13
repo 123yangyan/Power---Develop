@@ -7,6 +7,7 @@ import com.owner.mindbody.data.ActivityMinuteRepository
 import com.owner.mindbody.data.DeviceSyncPreferences
 import com.owner.mindbody.data.Hr247Repository
 import com.owner.mindbody.data.HrRepository
+import com.owner.mindbody.data.MoodRepository
 import com.owner.mindbody.data.NightlyRechargeRepository
 import com.owner.mindbody.data.Ppi247Repository
 import com.owner.mindbody.data.PpiRepository
@@ -40,6 +41,9 @@ class AppStorage(context: Context) {
     val nightlyRecharge: NightlyRechargeRepository = NightlyRechargeRepository(database)
     val sleep: SleepRepository = SleepRepository(database)
     val training: TrainingRepository = TrainingRepository(database)
+
+    // Phase 2 心情记录
+    val mood: MoodRepository = MoodRepository(database)
 
     val sync: SyncManager = SyncManager(hr)
     val deviceSyncPreferences: DeviceSyncPreferences = DeviceSyncPreferences(context)

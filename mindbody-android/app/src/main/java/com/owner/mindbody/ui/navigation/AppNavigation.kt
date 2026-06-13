@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,16 +16,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.owner.mindbody.MainActivity
 import com.owner.mindbody.ui.components.DefaultNavTabs
 import com.owner.mindbody.ui.components.FloatingIslandNav
 import com.owner.mindbody.ui.device.DeviceScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
+import com.owner.mindbody.ui.mood.MoodHistoryScreen
+import com.owner.mindbody.ui.mood.MoodRecordScreen
 import com.owner.mindbody.ui.sensors.SensorsScreen
 import com.owner.mindbody.ui.theme.MindBodyColors
 
 sealed class AppRoute(val route: String, val label: String) {
     data object HeartRate : AppRoute("heart_rate", "心率")
+    data object MoodRecord : AppRoute("mood_record", "记录")
+    data object MoodHistory : AppRoute("mood_history", "历史")
     data object Sensors : AppRoute("sensors", "传感器")
     data object Device : AppRoute("device", "设备")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
@@ -33,13 +39,31 @@ sealed class AppRoute(val route: String, val label: String) {
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(initialRoute: String? = null) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
 
-    val bottomRoutes = listOf(AppRoute.HeartRate, AppRoute.Sensors, AppRoute.Device)
+    val bottomRoutes = listOf(
+        AppRoute.HeartRate,
+        AppRoute.MoodRecord,
+        AppRoute.MoodHistory,
+        AppRoute.Sensors,
+        AppRoute.Device
+    )
     val showBottomBar = currentRoute in bottomRoutes.map { it.route }
+
+    LaunchedEffect(initialRoute) {
+        if (initialRoute != null && initialRoute in bottomRoutes.map { it.route }) {
+            navController.navigate(initialRoute) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -56,6 +80,12 @@ fun AppNavigation() {
         ) {
             composable(AppRoute.HeartRate.route) {
                 HeartRateScreen()
+            }
+            composable(AppRoute.MoodRecord.route) {
+                MoodRecordScreen()
+            }
+            composable(AppRoute.MoodHistory.route) {
+                MoodHistoryScreen()
             }
             composable(AppRoute.Sensors.route) {
                 SensorsScreen()

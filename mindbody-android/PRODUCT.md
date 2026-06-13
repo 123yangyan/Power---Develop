@@ -45,8 +45,8 @@
 |------|------|------|
 | **仪表** | 心情指数、心率摘要、成长阶段、今日主指导 | Phase 4 规划 |
 | **心率** | 实时 BPM、当日曲线、连接状态 | Phase 1 已实现 |
-| **记录** | 价值感×耗能网格 + 日记输入 | Phase 2 规划 |
-| **历史** | 日记列表 + 关联时段心率快照 | Phase 2 规划 |
+| **记录** | 价值感×耗能网格 + 日记输入（v3.7 续号/序号） | Phase 2 已实现 |
+| **历史** | 日记列表 + CoordMiniBadge + 关联 HR | Phase 2 已实现 |
 | **指导** | 每日 AI 洞察（风险、模式、建议） | Phase 3 规划 |
 | **设备** | Loop 连接、FTU、配对引导、连接模式切换 | Phase 1 已实现 |
 
@@ -109,18 +109,19 @@ flowchart LR
 
 **验收：** 真机 Polar Loop 稳定显示心率；常连接模式下断线可自动重连。
 
-### Phase 2 — 心情记录移植（待启动）
+### Phase 2 — 心情记录移植（已完成，对齐 emotion v3.7）
 
-**前置：** P0 存储核心已完成。**子 Plan：** [phase2心情记录移植](../.cursor/plans/phase2心情记录移植.plan.md)
+**前置：** P0 存储核心已完成。**子 Plan：** [phase2心情记录移植](../.cursor/plans/phase2心情记录移植.plan.md)（真相源：emotion v3.7.0）
 
-**目标：** App 内完成 emotion 核心记录体验。
+**已实现：**
 
-- 移植「价值感 × 耗能」四象限点选 + 日记输入
-- 定时提醒（WorkManager）
-- 历史列表与编辑
-- 记录时刻 **关联本地 HR 快照**（±5 分钟窗口或短连接快照）
+- 「价值感 × 耗能」四象限 + `MoodRecordViewport` 记录页（今日序号、上次记录时间）
+- 日记 Enter 列表续号（v3.7）；记录页提醒设置（间隔/静默/通知/强弹窗/测试提醒）
+- WorkManager 提醒 + `MoodCheckInActivity` 强弹窗；Esc/稍后 → 逃避记录 + 20 分钟 snooze
+- 历史：`CoordMiniBadge`、极性/逃避样式、分页跳转、同日 `(i/total)`
+- 记录时刻 **HR 快照**（MindBody 扩展）；数据经 `app.storage.mood` 读写
 
-**验收：** 全流程不依赖 Windows；每条心情记录可附带当时心率估计值。
+**验收：** 行为对齐 emotion v3.7 记录/历史/提醒 UX；HR 快照保留。
 
 ### Phase 3 — 云端同步 + 融合 Pipeline
 
@@ -235,4 +236,4 @@ flowchart TB
 
 ---
 
-*文档版本：Phase 1 + P0 存储核心 + BLE 连接模式；最后更新 2026-06-13。*
+*文档版本：Phase 1 + P0 + Phase 2（emotion v3.7 对齐）；最后更新 2026-06-13。*

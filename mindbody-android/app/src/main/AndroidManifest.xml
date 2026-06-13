@@ -46,6 +46,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".MoodCheckInActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.MindBody" />
+
         <service
             android:name=".polar.HrStreamService"
             android:enabled="true"

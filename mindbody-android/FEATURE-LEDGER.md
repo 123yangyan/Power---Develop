@@ -10,7 +10,7 @@
 
 ---
 
-## 索引（已实现 16 条）
+## 索引（已实现 28 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -30,6 +30,18 @@
 | F-P1-008 | DevicePreferences DataStore | phase1-android-polar |
 | F-P1-009 | 在线传感器流全量落库 | stream-entities |
 | F-P1-010 | 设备离线数据同步落库 | sync-device-manager |
+| F-P2-001 | mood_entries 实体与 Repository | mood-entity |
+| F-P2-002 | ValueEnergyGrid 四象限点选 | value-energy-grid |
+| F-P2-003 | DiaryInput 日记输入 | diary-input |
+| F-P2-004 | 记录页 MoodRecordScreen | mood-record-screen |
+| F-P2-005 | 保存时 HR 快照关联 | hr-snapshot |
+| F-P2-006 | WorkManager 定时提醒 | reminder |
+| F-P2-007 | 历史列表 MoodHistoryScreen | history-screen |
+| F-P2-008 | 底部导航记录/历史页签 | navigation |
+| F-P2-009 | emotion v3.7 日记续号与 RecordViewport | wave-a-diary-continue |
+| F-P2-010 | 同日序号 dailyEntryIndex | wave-a-daily-index |
+| F-P2-011 | 强弹窗 CheckIn + snooze/逃避记录 | wave-b-checkin-dialog |
+| F-P2-012 | 历史 CoordMiniBadge 与分页增强 | wave-c-history-polish |
 
 路径均相对于 `app/src/main/java/com/owner/mindbody/`。
 
@@ -360,6 +372,249 @@
 #### 变更记录
 
 - 2026-06-13：DeviceSyncManager + 8 表 v4 (#sync-device-manager)
+
+---
+
+## P2 — 心情记录
+
+### F-P2-001 mood_entries 实体与 Repository
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: mood-entity |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：本地持久化心情记录，为 Phase 3 同步就绪。
+- **入口**：`AppStorage.mood` → `MoodRepository`
+- **关键文件**：`data/local/MoodEntryEntity.kt`、`MoodEntryDao.kt`；`data/MoodRepository.kt`；`AppDatabase` v5 + `MIGRATION_4_5`
+- **调用约定**：实体含 `@Embedded sync: SyncMeta`；DAO 实现 `SyncableDao`；功能层经 `app.storage.mood` 读写。
+- **验收要点**：`getUnsynced()` 可返回 PENDING 记录；迁移不丢 v4 数据。
+
+#### 变更记录
+
+- 2026-06-13：mood_entries 表 + Repository (#mood-entity)
+
+---
+
+### F-P2-002 ValueEnergyGrid 四象限点选
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: value-energy-grid |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：移植 emotion 价值感×耗能坐标点选。
+- **关键文件**：`ui/mood/ValueEnergyGrid.kt`、`ui/mood/MoodQuadrant.kt`
+- **调用约定**：点击映射 coord -4~+4；象限名与 emotion 一致。
+- **验收要点**：落点与坐标显示一致；四象限背景可见。
+
+#### 变更记录
+
+- 2026-06-13：Compose 网格组件 (#value-energy-grid)
+
+---
+
+### F-P2-003 DiaryInput 日记输入
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: diary-input |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：多行日记输入 + v3.7 Enter 列表续号。
+- **关键文件**：`ui/mood/DiaryInput.kt`、`DiaryListContinue.kt`
+- **验收要点**：有序/无序列表 Enter 续号；记录页 scrollable 固定高度滚动。
+
+#### 变更记录
+
+- 2026-06-13：DiaryInput 组件 (#diary-input)
+- 2026-06-13：v3.7 列表续号 (#wave-a-diary-continue)
+
+---
+
+### F-P2-004 记录页 MoodRecordScreen
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: mood-record-screen |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：组装坐标+日记+保存，经 ViewModel 写 `storage.mood`。
+- **入口**：底部导航「记录」→ `MoodRecordScreen`
+- **关键文件**：`MoodRecordScreen.kt`、`MoodRecordViewport.kt`、`MoodRecordViewModel.kt`、`MoodSettingsSection.kt`
+- **调用约定**：`MoodRecordViewport` 共用 page/popup/modal；显示今日序号与上次记录时间。
+- **验收要点**：真机可完成点选→写日记→保存。
+
+#### 变更记录
+
+- 2026-06-13：记录页 + ViewModel (#mood-record-screen)
+
+---
+
+### F-P2-005 保存时 HR 快照关联
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: hr-snapshot |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：记录时刻关联本地 HR 估计值。
+- **关键文件**：`MoodRecordViewModel.resolveHrSnapshot()`；复用 `HrRepository.getHrNearTimestamp`、`PolarBleManager.connectForSnapshot`
+- **调用约定**：常连接先查 ±5min 均值；短连接无样本时 `connectForSnapshot`；无手环时 `hr_at_entry` 为 null。
+- **验收要点**：历史页展示「估计关联」标注；非医疗诊断文案存在。
+
+#### 变更记录
+
+- 2026-06-13：HR 快照逻辑 (#hr-snapshot)
+
+---
+
+### F-P2-006 WorkManager 定时提醒
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: reminder |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：替代 emotion daily-checkin-service，定时提醒记录。
+- **关键文件**：`worker/MoodReminderWorker.kt`、`MoodReminderDeliver.kt`、`MoodReminderScheduler.kt`；`MoodCheckInActivity.kt`；`data/MoodPreferences.kt`
+- **调用约定**：间隔 1–1440 分钟；静默可编辑；strongPopup 全屏 CheckIn；Esc/稍后写逃避记录 + 20min snooze；测试提醒 30s/60s。
+- **验收要点**：`MindBodyApplication.onCreate` 注册周期任务；静默时段不弹通知。
+
+#### 变更记录
+
+- 2026-06-13：WorkManager + MoodPreferences (#reminder)
+
+---
+
+### F-P2-007 历史列表 MoodHistoryScreen
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: history-screen |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：列表、预览、编辑、删除。
+- **入口**：底部导航「历史」→ `MoodHistoryScreen`
+- **关键文件**：`MoodHistoryScreen.kt`、`MoodHistoryRowBuilder.kt`、`CoordMiniBadge.kt`、`DailyEntryIndex.kt`
+- **调用约定**：极性/逃避卡片样式；CoordMiniBadge；页码按钮 + 跳转；同日 `(i/total)`。
+- **验收要点**：保存后在历史可见；编辑/删除生效。
+
+#### 变更记录
+
+- 2026-06-13：历史页 (#history-screen)
+
+---
+
+### F-P2-008 底部导航记录/历史页签
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / todo: navigation |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：主导航整合记录与历史。
+- **关键文件**：`ui/navigation/AppNavigation.kt`；`ui/components/FloatingIslandNav.kt`（`mood_record` / `mood_history`）
+- **调用约定**：通知 deep link `MainActivity.EXTRA_NAVIGATE_TO=mood_record`。
+- **验收要点**：五页签可切换；FTU 页仍隐藏底栏。
+
+#### 变更记录
+
+- 2026-06-13：导航扩展 (#navigation)
+
+---
+
+### F-P2-009 emotion v3.7 日记续号与 RecordViewport
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2 对齐 emotion v3.7 / todo: wave-a-diary-continue, wave-a-record-viewport |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：对齐 emotion v3.7 记录页布局与日记交互。
+- **关键文件**：`DiaryListContinue.kt`、`MoodRecordViewport.kt`、`MoodSettingsSection.kt`
+- **验收要点**：Enter 列表续号；RecordViewport 信息架构（日期/序号/坐标/日记/保存）。
+
+#### 变更记录
+
+- 2026-06-13：v3.7 记录 UX (#wave-a-diary-continue)
+
+---
+
+### F-P2-010 同日序号 dailyEntryIndex
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2 对齐 emotion v3.7 / todo: wave-a-daily-index |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：记录页「今日第 N 条」与历史 `(i/total)`。
+- **关键文件**：`DailyEntryIndex.kt`；`MoodRecordViewModel`、`MoodHistoryViewModel`
+- **验收要点**：按本地日历日分组序号正确。
+
+#### 变更记录
+
+- 2026-06-13：dailyEntryIndex (#wave-a-daily-index)
+
+---
+
+### F-P2-011 强弹窗 CheckIn + snooze/逃避记录
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2 对齐 emotion v3.7 / todo: wave-b-checkin-dialog, wave-b-snooze-avoidance |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：对齐 daily-checkin-service 双通道提醒与 Esc snooze。
+- **入口**：`MoodReminderDeliver` → 通知 + `MoodCheckInActivity`
+- **关键文件**：`MoodCheckInActivity.kt`、`MoodCheckInConstants.kt`；`MoodRecordViewModel.recordSnooze()`
+- **调用约定**：逃避记录 `fact=逃避记录, coord(0,0)`；snoozeCount 触发 20min 短间隔。
+- **验收要点**：强弹窗可关；稍后写入逃避记录。
+
+#### 变更记录
+
+- 2026-06-13：CheckIn + snooze (#wave-b-checkin-dialog)
+
+---
+
+### F-P2-012 历史 CoordMiniBadge 与分页增强
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2 对齐 emotion v3.7 / todo: wave-c-history-polish |
+| 最后更新 | 2026-06-13 |
+
+#### 已实现方案
+
+- **目的**：历史列表视觉与分页对齐 emotion v3.7。
+- **关键文件**：`CoordMiniBadge.kt`、`MoodHistoryRowBuilder.kt`；`MoodHistoryScreen` pager
+- **验收要点**：极性着色、逃避 badge、页码跳转。
+
+#### 变更记录
+
+- 2026-06-13：历史 polish (#wave-c-history-polish)
 
 ---
 
