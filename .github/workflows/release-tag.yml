@@ -1,0 +1,36 @@
+# 推送版本 tag（v*）时自动校验 Android 工程能否编译
+name: Release Tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mindbody-android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Assemble Debug
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindbody-debug-apk
+          path: mindbody-android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn

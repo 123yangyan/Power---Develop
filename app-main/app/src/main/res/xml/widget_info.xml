@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  T11：桌面小组件元数据。
+  - targetCellWidth/Height：API 31+ 使用格子数定义尺寸（2×1 格）
+  - minWidth/minHeight：向下兼容（2格≈140dp, 1格≈52dp）
+  - updatePeriodMillis：系统触发更新的最小间隔（最小值 1,800,000 = 30 分钟）
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:minWidth="140dp"
+    android:minHeight="52dp"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

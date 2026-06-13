@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- T9：FileProvider 可分享的文件路径范围 -->
+<paths>
+    <!-- 应用私有 files 目录下的 recordings 子目录 -->
+    <files-path name="recordings" path="recordings/" />
+</paths>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">身心状态</string>
+    <string name="hr_notification_channel">心率采集</string>
+    <string name="hr_notification_title">正在采集 Polar Loop 心率</string>
+    <string name="hr_notification_text">保持蓝牙连接以持续记录</string>
+
+    <string name="section_insight">MINDBODY INSIGHT</string>
+    <string name="title_heart_rate">实时心觉</string>
+    <string name="section_hardware">POLAR HARDWARE</string>
+    <string name="title_device">设备设置</string>
+    <string name="stats_today_load">今日生理负荷</string>
+    <string name="stats_cache_24h">24h 缓存</string>
+    <string name="chart_mood_phase2">心情打点 · Phase 2 即将推出</string>
+    <string name="nav_heart_rate">心率</string>
+    <string name="nav_device">设备</string>
+</resources>

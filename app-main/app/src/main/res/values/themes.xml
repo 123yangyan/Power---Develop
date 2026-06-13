@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      应用主题。
+      实际界面配色由 Compose 的 RecorderTheme 控制，这里只需提供一个
+      不带 ActionBar、背景透明可做沉浸式（edge-to-edge）的基础主题。
+      注意：系统没有 Theme.DeviceDefault.DayNight.NoActionBar 这个父主题，
+      深浅色由 Compose 的 RecorderTheme 负责，这里用 NoActionBar 即可。
+    -->
+    <style name="Theme.TimedRecorder" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>

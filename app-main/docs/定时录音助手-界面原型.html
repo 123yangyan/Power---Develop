@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>定时录音助手 — 全界面 HTML 原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <style>
+    /* ===== Material 3 浅色主题色（来自 Color.kt） ===== */
+    :root {
+      --primary: #7B6FA6;
+      --on-primary: #FFFFFF;
+      --primary-container: #E8E4F3;
+      --on-primary-container: #2A2540;
+      --secondary: #625B71;
+      --secondary-container: #E8DEF8;
+      --on-secondary-container: #1E192B;
+      --error: #BA1A1A;
+      --on-error: #FFFFFF;
+      --error-container: #FFDAD6;
+      --on-error-container: #410002;
+      --background: #F5F4F8;
+      --on-background: #1C1B1F;
+      --surface: #F5F4F8;
+      --on-surface: #1C1B1F;
+      --surface-variant: #E7E0EC;
+      --on-surface-variant: #49454F;
+      --outline: #79747E;
+      --outline-variant: #CAC4D0;
+      --success: #2E6B34;
+      --success-container: #B6F1AF;
+      --warning: #845400;
+      --warning-container: #FFDDB3;
+      --info: #1C5C8C;
+      --info-container: #CDE5FF;
+      --phone-width: 360px;
+      --phone-height: 780px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 28px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Roboto', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: #E8E6ED;
+      color: var(--on-background);
+      line-height: 1.5;
+    }
+
+    /* ===== 页面布局 ===== */
+    .page-header {
+      background: linear-gradient(135deg, var(--primary) 0%, #5A5080 100%);
+      color: white;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .page-header h1 { font-size: 1.75rem; font-weight: 500; }
+    .page-header p { opacity: 0.9; margin-top: 8px; font-size: 0.95rem; }
+
+    .toc {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: white;
+      border-bottom: 1px solid var(--outline-variant);
+      padding: 12px 16px;
+      overflow-x: auto;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .toc a {
+      display: inline-block;
+      padding: 6px 14px;
+      margin-right: 6px;
+      border-radius: 20px;
+      background: var(--surface-variant);
+      color: var(--on-surface);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .toc a:hover { background: var(--primary-container); color: var(--on-primary-container); }
+
+    .gallery {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    .screen-section {
+      margin-bottom: 56px;
+    }
+    .screen-section h2 {
+      font-size: 1.35rem;
+      font-weight: 500;
+      color: var(--primary);
+      margin-bottom: 6px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary-container);
+    }
+    .screen-section .desc {
+      color: var(--on-surface-variant);
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+    }
+    .screen-section .route-tag {
+      display: inline-block;
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: 'Roboto Mono', monospace;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    .phones-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      align-items: flex-start;
+    }
+    .phone-wrap { flex-shrink: 0; }
+    .phone-label {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--on-surface-variant);
+      margin-bottom: 10px;
+    }
+
+    /* ===== 手机外框 ===== */
+    .phone {
+      width: var(--phone-width);
+      height: var(--phone-height);
+      background: var(--background);
+      border-radius: 32px;
+      border: 3px solid #333;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+      position: relative;
+    }
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      z-index: 10;
+    }
+
+    .status-bar {
+      height: 36px;
+      padding: 12px 20px 0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--on-surface);
+      flex-shrink: 0;
+    }
+
+    .screen-body {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .screen-body.no-scroll { overflow: hidden; }
+
+    /* ===== 通用组件 ===== */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      padding: 8px 4px 8px 8px;
+      min-height: 56px;
+      background: var(--background);
+      flex-shrink: 0;
+    }
+    .top-bar .title {
+      flex: 1;
+      font-size: 1.15rem;
+      font-weight: 500;
+      padding-left: 8px;
+    }
+    .top-bar .back { color: var(--on-surface); }
+
+    .bottom-nav {
+      display: flex;
+      background: var(--surface);
+      border-top: 1px solid var(--outline-variant);
+      padding: 8px 0 12px;
+      flex-shrink: 0;
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.7rem;
+      color: var(--on-surface-variant);
+    }
+    .nav-item.active { color: var(--primary); }
+    .nav-item .material-symbols-outlined { font-size: 24px; }
+
+    .card {
+      background: var(--surface-variant);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      margin: 0 16px 12px;
+    }
+    .card.clickable { cursor: default; }
+
+    .section-header {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--primary);
+      padding: 16px 16px 6px;
+      letter-spacing: 0.02em;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--outline);
+      background: transparent;
+      font-size: 0.8rem;
+      color: var(--on-surface);
+      white-space: nowrap;
+    }
+    .chip.selected {
+      background: var(--secondary-container);
+      border-color: transparent;
+      color: var(--on-secondary-container);
+    }
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      padding: 8px 16px;
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+    .pill-success { background: var(--success-container); color: var(--success); }
+    .pill-warning { background: var(--warning-container); color: var(--warning); }
+    .pill-info { background: var(--info-container); color: var(--info); }
+    .pill-error { background: var(--error-container); color: var(--error); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 24px;
+      border-radius: 20px;
+      border: none;
+      font-size: 0.9rem;
+      font-family: inherit;
+      cursor: default;
+    }
+    .btn-filled { background: var(--primary); color: var(--on-primary); }
+    .btn-outlined {
+      background: transparent;
+      border: 1px solid var(--outline);
+      color: var(--primary);
+      padding: 8px 16px;
+      font-size: 0.85rem;
+    }
+    .btn-error { background: var(--error); color: var(--on-error); }
+
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--outline);
+      border-radius: 4px;
+      background: transparent;
+      font-size: 0.9rem;
+      color: var(--on-surface);
+      margin-bottom: 8px;
+    }
+    .input-label {
+      font-size: 0.75rem;
+      color: var(--on-surface-variant);
+      margin-bottom: 4px;
+    }
+
+    .switch {
+      width: 44px;
+      height: 24px;
+      background: var(--primary);
+      border-radius: 12px;
+      position: relative;
+    }
+    .switch::after {
+      content: '';
+      position: absolute;
+      right: 2px;
+      top: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+    }
+    .switch.off { background: var(--outline-variant); }
+    .switch.off::after { right: auto; left: 2px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 32px;
+      color: var(--on-surface-variant);
+    }
+    .empty-state .material-symbols-outlined {
+      font-size: 48px;
+      opacity: 0.5;
+      margin-bottom: 12px;
+    }
+    .empty-state h3 { font-size: 1rem; font-weight: 500; color: var(--on-surface); margin-bottom: 8px; }
+    .empty-state p { font-size: 0.85rem; }
+
+    .fab-extended {
+      position: absolute;
+      bottom: 80px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+      border-radius: 16px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .fab-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--error);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(186,26,26,0.3);
+    }
+    .fab-circle .material-symbols-outlined { font-size: 32px; }
+
+    /* ===== 首页专用 ===== */
+    .search-bar {
+      display: flex;
+      align-items: center;
+      margin: 12px 16px;
+      padding: 4px 4px 4px 16px;
+      background: var(--surface-variant);
+      border-radius: var(--radius-xl);
+    }
+    .search-bar input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 10px 8px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .search-bar .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--on-surface-variant);
+    }
+
+    .floating-capsule {
+      display: flex;
+      align-items: center;
+      margin: 8px 16px 16px;
+      padding: 6px 8px;
+      background: var(--surface);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      border: 1px solid var(--outline-variant);
+    }
+    .floating-capsule .mic-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--error);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .floating-capsule .text-btn {
+      flex: 1;
+      text-align: center;
+      color: var(--on-surface-variant);
+      font-size: 0.85rem;
+    }
+    .floating-capsule .more-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--on-surface-variant);
+    }
+
+    .schedule-hint {
+      background: var(--secondary-container);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      margin: 4px 16px 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .schedule-hint .content { flex: 1; }
+    .schedule-hint .title { font-size: 0.85rem; font-weight: 500; }
+    .schedule-hint .sub { font-size: 0.75rem; color: var(--on-surface-variant); }
+
+    .timeline-card {
+      background: var(--surface-variant);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      margin: 6px 16px;
+    }
+    .timeline-card .title { font-weight: 700; font-size: 0.95rem; }
+    .timeline-card .time { font-size: 0.75rem; color: var(--on-surface-variant); margin-top: 4px; }
+    .timeline-card .keywords { font-size: 0.75rem; color: var(--on-surface-variant); margin-top: 4px; }
+
+    /* ===== 场景选择 ===== */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 0 20px;
+    }
+    .scenario-card {
+      background: var(--surface-variant);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      border: 2px solid transparent;
+      text-align: center;
+    }
+    .scenario-card.selected {
+      border-color: var(--primary);
+      background: var(--primary-container);
+    }
+    .scenario-card .icon-wrap {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--primary-container);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+      color: var(--primary);
+    }
+    .scenario-card.selected .icon-wrap { background: var(--primary); color: white; }
+    .scenario-card h4 { font-size: 0.9rem; margin-bottom: 4px; }
+    .scenario-card p { font-size: 0.7rem; color: var(--on-surface-variant); }
+
+    /* ===== 录音页 ===== */
+    .waveform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      height: 48px;
+      padding: 0 24px;
+    }
+    .waveform span {
+      width: 4px;
+      background: var(--primary);
+      border-radius: 2px;
+      animation: wave 1s ease-in-out infinite;
+    }
+    .waveform span:nth-child(1) { height: 12px; animation-delay: 0s; }
+    .waveform span:nth-child(2) { height: 24px; animation-delay: 0.1s; }
+    .waveform span:nth-child(3) { height: 32px; animation-delay: 0.2s; }
+    .waveform span:nth-child(4) { height: 20px; animation-delay: 0.3s; }
+    .waveform span:nth-child(5) { height: 28px; animation-delay: 0.4s; }
+    .waveform span:nth-child(6) { height: 16px; animation-delay: 0.5s; }
+    .waveform span:nth-child(7) { height: 36px; animation-delay: 0.6s; }
+    .waveform span:nth-child(8) { height: 18px; animation-delay: 0.7s; }
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.5); }
+      50% { transform: scaleY(1); }
+    }
+
+    .timer {
+      font-family: 'Roboto Mono', monospace;
+      font-size: 2.5rem;
+      text-align: center;
+      padding: 8px 0 16px;
+    }
+
+    .recording-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px;
+    }
+
+    /* ===== Bottom Sheet ===== */
+    .bottom-sheet-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: flex;
+      align-items: flex-end;
+      z-index: 20;
+    }
+    .bottom-sheet {
+      width: 100%;
+      background: var(--surface);
+      border-radius: 28px 28px 0 0;
+      padding: 16px 0 32px;
+      max-height: 85%;
+      overflow-y: auto;
+    }
+    .bottom-sheet .handle {
+      width: 32px;
+      height: 4px;
+      background: var(--outline-variant);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+    }
+
+    /* ===== 对话框 ===== */
+    .dialog-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      padding: 24px;
+    }
+    .dialog {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      max-width: 280px;
+      width: 100%;
+    }
+    .dialog h3 { font-size: 1.1rem; margin-bottom: 12px; }
+    .dialog p { font-size: 0.9rem; color: var(--on-surface-variant); margin-bottom: 20px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .dialog-actions button {
+      background: none;
+      border: none;
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      color: var(--primary);
+      cursor: default;
+    }
+    .dialog-actions .danger { color: var(--error); }
+
+    /* ===== 设置页 ===== */
+    .setting-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+    }
+    .setting-row .label { flex: 1; font-size: 0.95rem; }
+    .setting-nav {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      cursor: default;
+    }
+    .setting-nav .label { flex: 1; padding-left: 12px; }
+    .radio-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+      gap: 8px;
+    }
+    .radio {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--primary);
+      border-radius: 50%;
+      position: relative;
+    }
+    .radio.checked::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      background: var(--primary);
+      border-radius: 50%;
+    }
+
+    /* ===== 小组件 ===== */
+    .widget {
+      width: 280px;
+      background: #1E1E2E;
+      border-radius: 16px;
+      padding: 12px;
+      color: #CDD6F4;
+    }
+    .widget .widget-title { font-size: 12px; margin-bottom: 8px; }
+    .widget .widget-row { display: flex; gap: 16px; align-items: center; }
+    .widget .stat { text-align: center; }
+    .widget .stat .num { font-size: 18px; font-weight: 700; }
+    .widget .stat .lbl { font-size: 10px; color: #6C7086; }
+    .widget .recording { color: #F38BA8; font-weight: 700; }
+
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      vertical-align: middle;
+    }
+
+    .slider-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--outline-variant);
+      border-radius: 2px;
+      position: relative;
+    }
+    .slider-bar::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 35%;
+      height: 100%;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 32px;
+      color: var(--on-surface-variant);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--outline-variant);
+    }
+  </style>
+</head>
+<body>
+
+<header class="page-header">
+  <h1>定时录音助手 — 全界面 HTML 原型</h1>
+  <p>基于 app-main 项目 Compose 源码生成 · 共 16 个界面/状态 · Material Design 3 浅色主题</p>
+</header>
+
+<nav class="toc">
+  <a href="#s01">首次引导</a>
+  <a href="#s02">首页</a>
+  <a href="#s03">更多菜单</a>
+  <a href="#s04">场景选择</a>
+  <a href="#s05">正在录音</a>
+  <a href="#s06">录音任务</a>
+  <a href="#s07">编辑任务</a>
+  <a href="#s08">本地文件</a>
+  <a href="#s09">消息中心</a>
+  <a href="#s10">处理结果</a>
+  <a href="#s11">设置</a>
+  <a href="#s12">诊断日志</a>
+  <a href="#s13">关于隐私</a>
+  <a href="#s14">桌面小组件</a>
+</nav>
+
+<main class="gallery">
+
+  <!-- 01 首次启动引导 -->
+  <section class="screen-section" id="s01">
+    <h2>01 · 首次启动引导 <span class="route-tag">onboarding</span></h2>
+    <p class="desc">OnboardingScreen.kt — 首次安装后展示权限说明与使用须知，完成后进入主界面。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">欢迎页</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">欢迎使用</span></div>
+          <div class="screen-body">
+            <div style="text-align:center;padding:24px 16px;">
+              <div style="width:72px;height:72px;border-radius:50%;background:var(--primary-container);display:flex;align-items:center;justify-content:center;margin:0 auto;">
+                <span class="material-symbols-outlined" style="color:var(--on-primary-container);font-size:36px;">mic</span>
+              </div>
+              <h3 style="margin-top:12px;font-size:1.25rem;">定时录音助手</h3>
+              <p style="color:var(--on-surface-variant);font-size:0.9rem;margin-top:4px;">自动定时录音 · 切片上传 · 结果提醒</p>
+            </div>
+            <div class="card">
+              <div style="font-weight:500;margin-bottom:8px;">使用前须知</div>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);">• 录音数据将上传至您自行配置的服务器</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• 请确保录音行为符合当地法律法规</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• 合法使用录音功能的责任由您自行承担</p>
+            </div>
+            <div class="section-header">第一步：授予权限</div>
+            <div style="padding:0 16px;display:flex;flex-direction:column;gap:8px;">
+              <button class="btn btn-outlined" style="width:100%;">
+                <span class="material-symbols-outlined" style="font-size:20px;">mic</span> 授予录音与通知权限
+              </button>
+              <button class="btn btn-outlined" style="width:100%;">
+                <span class="material-symbols-outlined" style="font-size:20px;">battery_charging_full</span> 加入电池优化白名单
+              </button>
+              <button class="btn btn-filled" style="width:100%;margin-top:12px;">我已了解，进入应用</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 首页 -->
+  <section class="screen-section" id="s02">
+    <h2>02 · 首页 / 效率大盘 <span class="route-tag">home</span></h2>
+    <p class="desc">HomeScreen.kt — 搜索栏 + 场景快捷入口 + 今日计划 + 时间线 + 底部悬浮输入舱。</p>
+    <div class="phones-row">
+      <!-- 有数据 -->
+      <div class="phone-wrap">
+        <div class="phone-label">有数据状态</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="screen-body">
+            <div class="search-bar">
+              <span class="material-symbols-outlined" style="color:var(--on-surface-variant);">search</span>
+              <input placeholder="搜索记录、文件、消息…" readonly />
+              <div class="icon-btn"><span class="material-symbols-outlined">settings</span></div>
+            </div>
+            <div class="chip-row">
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">edit_note</span> 即时速记</span>
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">groups</span> 会议记录</span>
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">school</span> 课堂讲座</span>
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span> 定时值守</span>
+            </div>
+            <div class="schedule-hint">
+              <span class="material-symbols-outlined">schedule</span>
+              <div class="content">
+                <div class="title">今日 2 个值守任务</div>
+                <div class="sub">09:00-11:00 · 14:00-16:00</div>
+              </div>
+              <span style="color:var(--primary);font-size:0.85rem;">查看</span>
+            </div>
+            <div class="timeline-card">
+              <div class="title">产品周会讨论了 Q2 路线图与资源分配…</div>
+              <div class="time">06-06 10:32</div>
+              <div class="keywords">关键词：路线图、资源、里程碑</div>
+            </div>
+            <div class="timeline-card" style="display:flex;align-items:center;gap:8px;">
+              <span class="material-symbols-outlined">cloud_upload</span>
+              <div style="flex:1;">
+                <div style="font-size:0.9rem;">manual_meeting_20250606_1030.m4a</div>
+                <div class="time">06-06 10:30</div>
+              </div>
+              <span class="pill pill-success">已上传</span>
+            </div>
+            <div class="timeline-card" style="display:flex;align-items:center;gap:8px;">
+              <span class="material-symbols-outlined">notifications</span>
+              <div style="flex:1;">
+                <div style="font-weight:500;font-size:0.9rem;">检测到关键词「紧急」</div>
+                <div style="font-size:0.8rem;color:var(--on-surface-variant);">会议录音中出现高风险词汇</div>
+              </div>
+            </div>
+          </div>
+          <div class="floating-capsule">
+            <div class="mic-btn"><span class="material-symbols-outlined">mic</span></div>
+            <div class="text-btn">文字速记</div>
+            <div class="more-btn"><span class="material-symbols-outlined">more_horiz</span></div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item active"><span class="material-symbols-outlined">home</span>首页</div>
+            <div class="nav-item"><span class="material-symbols-outlined">storage</span>文件</div>
+            <div class="nav-item"><span class="material-symbols-outlined">settings</span>设置</div>
+          </div>
+        </div>
+      </div>
+      <!-- 空状态 -->
+      <div class="phone-wrap">
+        <div class="phone-label">空状态</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="screen-body">
+            <div class="search-bar">
+              <span class="material-symbols-outlined" style="color:var(--on-surface-variant);">search</span>
+              <input placeholder="搜索记录、文件、消息…" readonly />
+              <div class="icon-btn"><span class="material-symbols-outlined">settings</span></div>
+            </div>
+            <div class="chip-row">
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">edit_note</span> 即时速记</span>
+              <span class="chip"><span class="material-symbols-outlined" style="font-size:18px;">groups</span> 会议记录</span>
+            </div>
+            <div class="empty-state">
+              <span class="material-symbols-outlined">notifications</span>
+              <h3>还没有记录</h3>
+              <p>点击下方麦克风，选一个场景开始录音吧</p>
+            </div>
+          </div>
+          <div class="floating-capsule">
+            <div class="mic-btn"><span class="material-symbols-outlined">mic</span></div>
+            <div class="text-btn">文字速记</div>
+            <div class="more-btn"><span class="material-symbols-outlined">more_horiz</span></div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item active"><span class="material-symbols-outlined">home</span>首页</div>
+            <div class="nav-item"><span class="material-symbols-outlined">storage</span>文件</div>
+            <div class="nav-item"><span class="material-symbols-outlined">settings</span>设置</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 更多菜单 -->
+  <section class="screen-section" id="s03">
+    <h2>03 · 更多功能菜单 <span class="route-tag">ModalBottomSheet</span></h2>
+    <p class="desc">HomeScreen MoreMenuSheet — 从首页悬浮舱「更多」按钮弹出的底部抽屉。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">底部抽屉</div>
+        <div class="phone" style="position:relative;">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="screen-body" style="opacity:0.4;filter:blur(1px);">
+            <div class="search-bar"><input placeholder="搜索…" readonly /></div>
+          </div>
+          <div class="bottom-sheet-overlay">
+            <div class="bottom-sheet">
+              <div class="handle"></div>
+              <div style="font-weight:500;padding:8px 24px 12px;">更多功能</div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                <span class="material-symbols-outlined">schedule</span> 录音任务
+              </div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                <span class="material-symbols-outlined">play_arrow</span> 本地文件
+              </div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                <span class="material-symbols-outlined">notifications</span> 消息中心
+              </div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                <span class="material-symbols-outlined">cloud_upload</span> 处理结果
+              </div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                <span class="material-symbols-outlined">bug_report</span> 诊断日志
+              </div>
+              <div class="card clickable" style="display:flex;align-items:center;gap:12px;">
+                <span class="material-symbols-outlined">info</span> 关于
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 场景选择 -->
+  <section class="screen-section" id="s04">
+    <h2>04 · 选择录音场景 <span class="route-tag">recording/scenario</span></h2>
+    <p class="desc">RecordingScenarioScreen.kt — 2×2 场景宫格 + 红色开录按钮，支持 BottomSheet 和全屏两种形态。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">BottomSheet 形态</div>
+        <div class="phone" style="position:relative;">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="screen-body" style="opacity:0.3;"></div>
+          <div class="bottom-sheet-overlay">
+            <div class="bottom-sheet">
+              <div class="handle"></div>
+              <div style="text-align:center;padding:0 20px;">
+                <p style="font-weight:500;">自动切片上传，不怕录到一半丢数据</p>
+                <p style="font-size:0.85rem;color:var(--on-surface-variant);margin:4px 0 20px;">准备好了，选一个场景开始吧</p>
+              </div>
+              <div class="scenario-grid">
+                <div class="scenario-card selected">
+                  <div class="icon-wrap"><span class="material-symbols-outlined">edit_note</span></div>
+                  <h4>即时速记</h4>
+                  <p>单次最长 2 小时</p>
+                  <p>按设置切片上传</p>
+                </div>
+                <div class="scenario-card">
+                  <div class="icon-wrap"><span class="material-symbols-outlined">groups</span></div>
+                  <h4>会议记录</h4>
+                  <p>建议 ≤ 3 小时</p>
+                  <p>每 5 分钟自动切片</p>
+                </div>
+                <div class="scenario-card">
+                  <div class="icon-wrap"><span class="material-symbols-outlined">school</span></div>
+                  <h4>课堂讲座</h4>
+                  <p>按任务时段执行</p>
+                  <p>定时自动开始/结束</p>
+                </div>
+                <div class="scenario-card">
+                  <div class="icon-wrap"><span class="material-symbols-outlined">schedule</span></div>
+                  <h4>定时值守</h4>
+                  <p>按已配置时段</p>
+                  <p>后台自动切片上传</p>
+                </div>
+              </div>
+              <div style="text-align:center;margin-top:28px;">
+                <div class="fab-circle" style="margin:0 auto;width:72px;height:72px;"><span class="material-symbols-outlined">mic</span></div>
+                <p style="margin-top:8px;font-size:0.85rem;">开始录音</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">全屏路由形态</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar">
+            <span class="material-symbols-outlined back">arrow_back</span>
+            <span class="title">选择录音场景</span>
+          </div>
+          <div class="screen-body">
+            <div style="text-align:center;padding:16px 20px;">
+              <p style="font-weight:500;">自动切片上传，不怕录到一半丢数据</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:4px;">准备好了，选一个场景开始吧</p>
+            </div>
+            <div class="scenario-grid">
+              <div class="scenario-card">
+                <div class="icon-wrap"><span class="material-symbols-outlined">edit_note</span></div>
+                <h4>即时速记</h4>
+                <p>单次最长 2 小时</p>
+              </div>
+              <div class="scenario-card selected">
+                <div class="icon-wrap"><span class="material-symbols-outlined">groups</span></div>
+                <h4>会议记录</h4>
+                <p>建议 ≤ 3 小时</p>
+              </div>
+              <div class="scenario-card">
+                <div class="icon-wrap"><span class="material-symbols-outlined">school</span></div>
+                <h4>课堂讲座</h4>
+                <p>按任务时段执行</p>
+              </div>
+              <div class="scenario-card">
+                <div class="icon-wrap"><span class="material-symbols-outlined">schedule</span></div>
+                <h4>定时值守</h4>
+                <p>按已配置时段</p>
+              </div>
+            </div>
+            <div style="text-align:center;margin-top:28px;">
+              <div class="fab-circle" style="margin:0 auto;"><span class="material-symbols-outlined">mic</span></div>
+              <p style="margin-top:8px;font-size:0.85rem;">开始录音</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 正在录音 -->
+  <section class="screen-section" id="s05">
+    <h2>05 · 正在录音 <span class="route-tag">recording/active</span></h2>
+    <p class="desc">ActiveRecordingScreen.kt — 实时状态区 + 声纹动画 + 计时 + 取消/暂停/完成控制。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">录音进行中</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar">
+            <span class="material-symbols-outlined back">arrow_back</span>
+            <input class="input-field" style="margin:0;border:none;background:transparent;font-weight:500;" value="会议记录" readonly />
+          </div>
+          <div class="screen-body no-scroll">
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;">
+              <div style="text-align:center;">
+                <p style="font-size:1.25rem;color:var(--on-surface-variant);">正在录音…</p>
+                <p style="font-size:0.9rem;color:var(--on-surface-variant);opacity:0.7;margin-top:12px;">会议记录 · 建议 ≤ 3 小时</p>
+              </div>
+            </div>
+            <div class="waveform">
+              <span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <div class="timer">12:34</div>
+            <div class="recording-controls">
+              <button class="btn btn-outlined"><span class="material-symbols-outlined" style="font-size:18px;">close</span> 取消</button>
+              <div class="fab-circle"><span class="material-symbols-outlined">pause</span></div>
+              <button class="btn btn-filled"><span class="material-symbols-outlined" style="font-size:18px;">check</span> 完成</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">放弃录音确认框</div>
+        <div class="phone" style="position:relative;">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="screen-body" style="opacity:0.3;"></div>
+          <div class="dialog-overlay">
+            <div class="dialog">
+              <h3>放弃录音？</h3>
+              <p>确定要放弃当前录音吗？已录制内容将不会保存。</p>
+              <div class="dialog-actions">
+                <button>继续录音</button>
+                <button class="danger">确定放弃</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 录音任务 -->
+  <section class="screen-section" id="s06">
+    <h2>06 · 录音任务列表 <span class="route-tag">schedule</span></h2>
+    <p class="desc">ScheduleScreen.kt — 定时值守任务列表，支持启用/禁用、删除、新增。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">有任务</div>
+        <div class="phone" style="position:relative;">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">录音任务</span></div>
+          <div class="screen-body">
+            <div class="card" style="display:flex;align-items:center;gap:12px;">
+              <div style="width:44px;height:44px;border-radius:50%;background:var(--primary-container);display:flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined" style="color:var(--on-primary-container);">schedule</span>
+              </div>
+              <div style="flex:1;">
+                <div style="font-weight:500;">上午课堂</div>
+                <div style="font-size:0.85rem;color:var(--on-surface-variant);">09:00 - 11:30</div>
+                <div style="font-size:0.75rem;color:var(--on-surface-variant);">每日重复 · 切片 5 分钟</div>
+              </div>
+              <div class="switch"></div>
+              <span class="material-symbols-outlined" style="color:var(--error);font-size:20px;">delete</span>
+            </div>
+            <div class="card" style="display:flex;align-items:center;gap:12px;">
+              <div style="width:44px;height:44px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined" style="color:var(--on-surface-variant);">schedule</span>
+              </div>
+              <div style="flex:1;">
+                <div style="font-weight:500;">晚间值守</div>
+                <div style="font-size:0.85rem;color:var(--on-surface-variant);">20:00 - 22:00</div>
+                <div style="font-size:0.75rem;color:var(--on-surface-variant);">每日重复 · 切片 5 分钟</div>
+              </div>
+              <div class="switch off"></div>
+              <span class="material-symbols-outlined" style="color:var(--error);font-size:20px;">delete</span>
+            </div>
+          </div>
+          <div class="fab-extended">
+            <span class="material-symbols-outlined">add</span> 新增任务
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">空状态</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">录音任务</span></div>
+          <div class="screen-body">
+            <div class="empty-state">
+              <span class="material-symbols-outlined">event_note</span>
+              <h3>还没有录音任务</h3>
+              <p>点击右下角「新增任务」，设置自动录音的时间段</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 编辑任务 -->
+  <section class="screen-section" id="s07">
+    <h2>07 · 新增/编辑任务 <span class="route-tag">schedule/edit/{taskId}</span></h2>
+    <p class="desc">TaskEditScreen.kt — 任务名称、开始/结束时间输入，保存后返回列表。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">新增任务</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">新增任务</span></div>
+          <div class="screen-body">
+            <div class="section-header">任务信息</div>
+            <div class="card">
+              <div class="input-label">任务名称（可选）</div>
+              <input class="input-field" value="上午课堂" readonly />
+            </div>
+            <div class="section-header">录音时间段</div>
+            <div class="card">
+              <div style="margin-bottom:12px;">
+                <div class="input-label">开始时间</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input class="input-field" style="width:96px;text-align:center;" value="9" readonly />
+                  <span style="font-size:1.25rem;">:</span>
+                  <input class="input-field" style="width:96px;text-align:center;" value="0" readonly />
+                </div>
+              </div>
+              <div>
+                <div class="input-label">结束时间</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input class="input-field" style="width:96px;text-align:center;" value="11" readonly />
+                  <span style="font-size:1.25rem;">:</span>
+                  <input class="input-field" style="width:96px;text-align:center;" value="30" readonly />
+                </div>
+              </div>
+            </div>
+            <div style="padding:16px;">
+              <button class="btn btn-filled" style="width:100%;">
+                <span class="material-symbols-outlined" style="font-size:20px;">check</span> 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 本地文件 -->
+  <section class="screen-section" id="s08">
+    <h2>08 · 本地文件 <span class="route-tag">files</span></h2>
+    <p class="desc">FilesScreen.kt — 上传状态筛选、文件列表、播放条、分享与重传。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">文件列表</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">本地文件</span></div>
+          <div class="screen-body">
+            <div class="chip-row">
+              <span class="chip selected">全部</span>
+              <span class="chip">成功</span>
+              <span class="chip">待上传</span>
+              <span class="chip">失败</span>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">audio_file</span>
+                <span style="flex:1;margin-left:8px;font-weight:500;font-size:0.9rem;">manual_meeting_1030.m4a（手动）</span>
+                <span class="material-symbols-outlined" style="color:var(--primary);font-size:20px;">share</span>
+              </div>
+              <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:6px;">06-06 10:30 · 2048 KB</div>
+              <div style="margin-top:8px;display:flex;gap:8px;">
+                <span class="pill pill-success">上传成功</span>
+                <span class="pill pill-success">已处理</span>
+              </div>
+              <button class="btn btn-outlined" style="margin-top:8px;">查看结果</button>
+              <div style="margin-top:12px;display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">pause</span>
+                <span style="font-size:0.8rem;font-family:monospace;">02:15</span>
+                <div class="slider-bar"></div>
+                <span style="font-size:0.8rem;font-family:monospace;">06:30</span>
+              </div>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">audio_file</span>
+                <span style="flex:1;margin-left:8px;font-weight:500;font-size:0.9rem;">manual_1035.m4a</span>
+              </div>
+              <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:6px;">06-06 10:35 · 512 KB</div>
+              <div style="margin-top:8px;display:flex;gap:8px;">
+                <span class="pill pill-error">上传失败</span>
+                <span class="pill pill-warning">待处理</span>
+              </div>
+              <button class="btn btn-outlined" style="margin-top:8px;">
+                <span class="material-symbols-outlined" style="font-size:18px;">refresh</span> 手动重传
+              </button>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="material-symbols-outlined">home</span>首页</div>
+            <div class="nav-item active"><span class="material-symbols-outlined">storage</span>文件</div>
+            <div class="nav-item"><span class="material-symbols-outlined">settings</span>设置</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 消息中心 -->
+  <section class="screen-section" id="s09">
+    <h2>09 · 消息中心 <span class="route-tag">messages</span></h2>
+    <p class="desc">MessagesScreen.kt — 异常筛选、全部已读、消息卡片（未读加粗 + 圆点）。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">消息列表</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">消息中心</span></div>
+          <div class="screen-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;">
+              <span class="chip selected">仅看异常</span>
+              <span style="color:var(--primary);font-size:0.85rem;display:flex;align-items:center;gap:4px;">
+                <span class="material-symbols-outlined" style="font-size:18px;">mark_email_read</span> 全部已读 (2)
+              </span>
+            </div>
+            <div class="card">
+              <div style="display:flex;gap:12px;">
+                <span class="material-symbols-outlined" style="color:var(--error);">notifications_active</span>
+                <div style="flex:1;">
+                  <div style="font-weight:700;">检测到关键词「紧急」</div>
+                  <div style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:4px;">会议录音 10:32 片段中出现高风险词汇</div>
+                  <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:4px;">06-06 10:35</div>
+                </div>
+                <div style="width:10px;height:10px;border-radius:50%;background:var(--error);margin-top:4px;"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div style="display:flex;gap:12px;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">notifications_active</span>
+                <div style="flex:1;">
+                  <div style="font-weight:700;">上传完成</div>
+                  <div style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:4px;">manual_meeting_1030.m4a 已成功上传</div>
+                  <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:4px;">06-06 10:31</div>
+                </div>
+                <div style="width:10px;height:10px;border-radius:50%;background:var(--primary);margin-top:4px;"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div style="display:flex;gap:12px;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">notifications_active</span>
+                <div style="flex:1;">
+                  <div>处理结果已就绪</div>
+                  <div style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:4px;">云端摘要与关键词识别已完成</div>
+                  <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:4px;">06-06 10:28</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 处理结果 -->
+  <section class="screen-section" id="s10">
+    <h2>10 · 处理结果 <span class="route-tag">results</span></h2>
+    <p class="desc">ResultsScreen.kt — 关键词搜索 + 摘要卡片 + 风险等级徽章。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">结果列表</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar">
+            <span class="material-symbols-outlined back">arrow_back</span>
+            <span class="title">处理结果</span>
+          </div>
+          <div class="screen-body">
+            <div style="padding:8px 16px;">
+              <input class="input-field" placeholder="搜索关键词或摘要…" readonly />
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">article</span>
+                <span style="flex:1;margin-left:8px;font-weight:500;">处理结果</span>
+                <span class="pill pill-error">高风险</span>
+              </div>
+              <p style="margin-top:8px;font-size:0.9rem;">产品周会讨论了 Q2 路线图，重点提及资源紧张与里程碑延期风险，需跟进紧急事项。</p>
+              <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="chip" style="font-size:0.75rem;">路线图</span>
+                <span class="chip" style="font-size:0.75rem;">紧急</span>
+                <span class="chip" style="font-size:0.75rem;">里程碑</span>
+              </div>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">article</span>
+                <span style="flex:1;margin-left:8px;font-weight:500;">处理结果</span>
+                <span class="pill pill-success">低风险</span>
+              </div>
+              <p style="margin-top:8px;font-size:0.9rem;">日常站会同步进度，各模块按计划推进，无阻塞项。</p>
+              <div style="margin-top:8px;display:flex;gap:8px;">
+                <span class="chip" style="font-size:0.75rem;">进度</span>
+                <span class="chip" style="font-size:0.75rem;">站会</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 设置 -->
+  <section class="screen-section" id="s11">
+    <h2>11 · 设置 <span class="route-tag">settings</span></h2>
+    <p class="desc">SettingsScreen.kt — 服务器配置、录音参数、质量、轮询、通知、免打扰、主题、卡片排序。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">设置页（节选）</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">设置</span></div>
+          <div class="screen-body">
+            <div class="section-header">服务器配置</div>
+            <div class="card">
+              <div class="input-label">Base URL（必填）</div>
+              <input class="input-field" value="https://api.example.com" readonly />
+              <div class="input-label">API Key（可选）</div>
+              <input class="input-field" value="sk-****" readonly />
+            </div>
+            <div class="section-header">录音参数</div>
+            <div class="card">
+              <div style="font-size:0.9rem;margin-bottom:6px;">切片时长</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="chip">1 分钟</span>
+                <span class="chip selected">5 分钟</span>
+                <span class="chip">10 分钟</span>
+              </div>
+              <div style="font-size:0.9rem;margin:12px 0 6px;">文件保留天数</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="chip">1 天</span><span class="chip">3 天</span>
+                <span class="chip selected">7 天</span><span class="chip">15 天</span>
+              </div>
+            </div>
+            <div class="section-header">录音质量</div>
+            <div class="card">
+              <div class="radio-row"><div class="radio"></div><div><div>32 kbps</div><div style="font-size:0.75rem;color:var(--on-surface-variant);">约 14 MB / 小时</div></div></div>
+              <div class="radio-row"><div class="radio checked"></div><div><div>64 kbps</div><div style="font-size:0.75rem;color:var(--on-surface-variant);">约 28 MB / 小时</div></div></div>
+              <div class="radio-row"><div class="radio"></div><div><div>128 kbps</div><div style="font-size:0.75rem;color:var(--on-surface-variant);">约 56 MB / 小时</div></div></div>
+            </div>
+            <div class="section-header">通知与网络</div>
+            <div class="card">
+              <div class="setting-row"><span class="label">仅 Wi-Fi 上传</span><div class="switch"></div></div>
+              <div class="setting-row"><span class="label">通知总开关</span><div class="switch"></div></div>
+              <div class="setting-row"><span class="label">异常提醒</span><div class="switch"></div></div>
+            </div>
+            <div class="section-header">外观主题</div>
+            <div class="card">
+              <div class="radio-row"><div class="radio checked"></div><span>跟随系统</span></div>
+              <div class="radio-row"><div class="radio"></div><span>浅色</span></div>
+              <div class="radio-row"><div class="radio"></div><span>深色</span></div>
+            </div>
+            <div class="section-header">其他</div>
+            <div class="card">
+              <div class="setting-nav">
+                <span class="material-symbols-outlined" style="color:var(--primary);">bug_report</span>
+                <span class="label">日志 / 诊断</span>
+                <span class="material-symbols-outlined" style="color:var(--on-surface-variant);">chevron_right</span>
+              </div>
+              <div class="setting-nav">
+                <span class="material-symbols-outlined" style="color:var(--primary);">info</span>
+                <span class="label">关于 / 隐私</span>
+                <span class="material-symbols-outlined" style="color:var(--on-surface-variant);">chevron_right</span>
+              </div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="material-symbols-outlined">home</span>首页</div>
+            <div class="nav-item"><span class="material-symbols-outlined">storage</span>文件</div>
+            <div class="nav-item active"><span class="material-symbols-outlined">settings</span>设置</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 诊断 -->
+  <section class="screen-section" id="s12">
+    <h2>12 · 日志 / 诊断 <span class="route-tag">settings/diagnostic</span></h2>
+    <p class="desc">DiagnosticScreen.kt — 服务状态、权限检查、最近日志列表（可复制）。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">诊断页</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">日志 / 诊断</span></div>
+          <div class="screen-body">
+            <div class="card" style="display:flex;align-items:center;gap:12px;">
+              <span class="material-symbols-outlined" style="color:var(--primary);">monitor_heart</span>
+              <div>
+                <div style="font-weight:500;">服务状态</div>
+                <div style="font-size:0.85rem;color:var(--on-surface-variant);">录音：空闲</div>
+              </div>
+            </div>
+            <div class="section-header">权限检查</div>
+            <div class="card">
+              <div class="setting-row">
+                <span class="label">录音权限</span>
+                <span class="pill pill-success">已授权</span>
+              </div>
+              <div class="setting-row">
+                <span class="label">通知权限</span>
+                <span class="pill pill-success">已授权</span>
+              </div>
+            </div>
+            <div class="section-header">最近日志</div>
+            <div class="card">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="pill pill-info">INFO</span>
+                <span style="font-size:0.7rem;color:var(--on-surface-variant);">UPLOAD</span>
+                <span style="flex:1;"></span>
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--on-surface-variant);">content_copy</span>
+              </div>
+              <p style="font-size:0.8rem;margin-top:6px;">文件 manual_meeting_1030.m4a 上传成功，耗时 2.3s</p>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="pill pill-warning">WARN</span>
+                <span style="font-size:0.7rem;color:var(--on-surface-variant);">NETWORK</span>
+                <span style="flex:1;"></span>
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--on-surface-variant);">content_copy</span>
+              </div>
+              <p style="font-size:0.8rem;margin-top:6px;">Wi-Fi 不可用，文件已加入待上传队列</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 关于 -->
+  <section class="screen-section" id="s13">
+    <h2>13 · 关于 / 隐私 <span class="route-tag">settings/about</span></h2>
+    <p class="desc">OnboardingScreen.kt AboutRoute — 版本信息、隐私说明、使用须知。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">关于页</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+          <div class="top-bar"><span class="title">关于 / 隐私</span></div>
+          <div class="screen-body">
+            <div class="card" style="background:var(--primary-container);">
+              <div style="font-size:1.15rem;font-weight:500;color:var(--on-primary-container);">定时录音助手 V1.0</div>
+              <div style="font-size:0.9rem;color:var(--on-primary-container);margin-top:4px;">自动录音 · 切片上传 · 云端处理 · 异常提醒</div>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">shield</span>
+                <span style="font-weight:500;">隐私说明</span>
+              </div>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);">• 本应用不会收集个人账号信息</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• 录音文件上传至用户自行配置的服务器</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• deviceId 仅用于设备标识，卸载后重新生成</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• API Key 等敏感配置本地加密存储</p>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary);">gavel</span>
+                <span style="font-weight:500;">使用须知</span>
+              </div>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);">• 请确保录音行为获得相关人员同意</p>
+              <p style="font-size:0.85rem;color:var(--on-surface-variant);margin-top:6px;">• 并遵守适用的法律法规</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 小组件 -->
+  <section class="screen-section" id="s14">
+    <h2>14 · 桌面小组件 <span class="route-tag">RecorderWidget</span></h2>
+    <p class="desc">RecorderWidget.kt — Glance 桌面 Widget，显示录音状态、今日任务数、未读消息数。</p>
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">空闲状态</div>
+        <div class="widget">
+          <div class="widget-title">定时录音助手</div>
+          <div class="widget-row">
+            <div class="recording" style="color:#6C7086;font-weight:normal;">○ 空闲</div>
+            <div class="stat"><div class="num" style="color:#A6E3A1;">2</div><div class="lbl">今日任务</div></div>
+            <div class="stat"><div class="num" style="color:#F9E2AF;">2</div><div class="lbl">未读消息</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">录音中</div>
+        <div class="widget">
+          <div class="widget-title">定时录音助手</div>
+          <div class="widget-row">
+            <div class="recording">● 12:34</div>
+            <div class="stat"><div class="num" style="color:#A6E3A1;">2</div><div class="lbl">今日任务</div></div>
+            <div class="stat"><div class="num" style="color:#F9E2AF;">2</div><div class="lbl">未读消息</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  生成自 app-main 项目 · 源码对应关系见各节 route-tag · 配色来自 core/designsystem/theme/Color.kt<br />
+  用浏览器直接打开本文件即可预览，无需服务器
+</footer>
+
+</body>
+</html>

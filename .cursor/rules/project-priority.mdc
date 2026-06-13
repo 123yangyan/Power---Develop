@@ -1,0 +1,92 @@
+---
+description: MindBody 项目优先级、Plan 对齐与变更记录约定（冲突时 Agent 必须遵守）
+alwaysApply: true
+---
+
+# MindBody 项目优先级与变更治理
+
+## 权威文档（按优先级）
+
+1. **全局优先级与冲突规则** — 本文件
+2. **产品真相源** — `mindbody-android/PRODUCT.md`
+3. **路线图** — `.cursor/plans/loop心情ai产品规划_9d502bd3.plan.md`
+4. **存储核心（横切模块）** — `.cursor/plans/统一存储核心模块_5f5a20f2.plan.md`
+5. **代码实现** — Git 历史与 PR
+
+若 PRODUCT.md 与 Plan 或代码不一致，以 **Plan + 已合并代码** 为准；发现漂移时先提醒用户同步 PRODUCT.md，不要静默沿用过时描述。
+
+---
+
+## 需求优先级（冲突时严格按此顺序）
+
+| 优先级 | 范围 | 状态 |
+|--------|------|------|
+| **P0** | 统一存储核心 `data/storage`（AppStorage 门面、Room 迁移、SyncMeta、批量缓冲） | 已完成，维护性改动仍属 P0 |
+| **P1** | Phase 1 稳定性：Polar BLE 连接、FTU、心率流、后台保活、`connectForSnapshot` | 已实现，bugfix 优先 |
+| **P2** | Phase 2：emotion 坐标+日记+提醒+历史 UI 移植，本地关联 HR 快照 | pending |
+| **P3** | Phase 3：server 扩展、HR+情绪融合 Pipeline、每日调度 | pending |
+| **P4** | Phase 4：仪表页、7 日历史、manifest v6 指导展示 | pending |
+
+**同优先级内**：先完成 Plan 中 `in_progress` 的 todo，再开新 todo。
+
+**跨优先级冲突**：高优先级未完成或受威胁时，不得为了低优先级需求改动 P0/P1 的核心契约（见下文「架构红线」）。
+
+---
+
+## 架构红线（不可未经确认而破坏）
+
+- 功能层（UI / ViewModel）**只通过** `MindBodyApplication.storage`（`AppStorage`）读写数据，禁止绕过门面直接访问 `AppDatabase` 或 Repository。
+- 新数据类型接入存储的固定 4 步（Entity + SyncMeta → SyncableDao → Migration → AppStorage 暴露），不得跳步。
+- Room：**禁止** `fallbackToDestructiveMigration`；schema 变更必须带显式 Migration。
+- 心率样本：**禁止**恢复 24h 自动删除；`deleteOlderThan` 仅作将来手动归档，不得默认调用。
+- 非医疗诊断：不做医疗级 HRV/压力诊断声明（见 PRODUCT.md 设计原则）。
+
+---
+
+## 每次改动前（Agent 必须做）
+
+1. **对齐 Plan**：说明本次改动对应哪个 Plan 的哪个 todo id（或 Phase 编号）。若无对应项，先提议新增/更新 Plan todo，再写代码。
+2. **检查冲突**：若与更高优先级需求或架构红线冲突，**停止实现**，用列表说明冲突与建议（升级优先级 / 推迟低优 / 改 Plan），等待用户确认。
+3. **控制范围**：只做与当前 todo 直接相关的最小 diff；不顺手重构无关模块。
+
+## 每次改动后（Agent 必须做）
+
+1. 将对应 Plan todo 标为 `completed`（或 `in_progress` / `cancelled` 并说明原因）。
+2. 若行为变化影响产品说明，提醒用户更新 `PRODUCT.md` 对应段落。
+3. Git commit message 建议格式：`类型: 简述 (plan-todo-id)`，例如 `feat: 添加 mood 实体与 DAO (#phase2-emotion-port)`。
+
+---
+
+## 依赖与阻塞关系
+
+```
+P0 存储核心 ──► P2 心情记录（mood 实体、HR 快照读存储）
+P1 BLE/心率 ──► P2 connectForSnapshot 关联快照
+P2 本地 mood ──► P3 上报与云端融合
+P3 融合 Pipeline ──► P4 仪表与指导展示
+```
+
+blocked 的 Phase：**不得**提前实现其消费者逻辑（例如 P3 后端 API 在 P2 本地实体未就绪前不应假定字段已存在）。
+
+---
+
+## Plan 文件索引
+
+| Plan | 路径 | 状态 |
+|------|------|------|
+| 主路线图 | `.cursor/plans/loop心情ai产品规划_9d502bd3.plan.md` | 进行中 |
+| 存储核心 P0 | `.cursor/plans/统一存储核心模块_5f5a20f2.plan.md` | 已完成 |
+| Phase 2 心情记录 | `.cursor/plans/phase2心情记录移植.plan.md` | pending |
+| Phase 3 云端融合 | `.cursor/plans/phase3云端融合.plan.md` | pending |
+| Phase 4 仪表闭环 | `.cursor/plans/phase4仪表与闭环.plan.md` | pending |
+
+新开横切模块或大特性时，在 `.cursor/plans/` 下新建子 Plan，并在主 Plan 中引用。
+
+---
+
+## 参考源码入口（mindbody-android）
+
+- 应用入口：`MindBodyApplication.kt` → `storage: AppStorage`
+- 存储门面：`data/storage/AppStorage.kt`
+- BLE：`polar/PolarBleManager.kt`
+- 产品说明：`mindbody-android/PRODUCT.md`

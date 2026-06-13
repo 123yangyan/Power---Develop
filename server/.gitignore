@@ -1,0 +1,6 @@
+.env
+nginx/certs/*.pem
+nginx/certs/*.key
+__pycache__/
+*.pyc
+.pytest_cache/

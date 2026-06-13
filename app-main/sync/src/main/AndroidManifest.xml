@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+  <application>
+    <!-- 前台录音服务 -->
+    <service
+        android:name=".record.RecordService"
+        android:exported="false"
+        android:foregroundServiceType="microphone" />
+
+    <!-- 开机自启 -->
+    <receiver
+        android:name=".BootReceiver"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+
+    <!-- 定时闹钟接收器 -->
+    <receiver
+        android:name=".schedule.ScheduleAlarmReceiver"
+        android:exported="false" />
+  </application>
+
+</manifest>

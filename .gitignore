@@ -1,0 +1,48 @@
+# --- 密钥与本地配置 ---
+.env
+.env.*
+!.env.example
+**/local.properties
+*.keystore
+*.jks
+
+# --- IDE ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# --- Android / Gradle ---
+**/.gradle/
+**/build/
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+**/.kotlin/
+*.apk
+*.aab
+
+# --- Node / Electron（emotion 参考项目）---
+**/node_modules/
+**/out/
+**/release/
+**/dist/
+
+# --- Python ---
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.venv/
+**/venv/
+
+# --- 证书 ---
+server/nginx/certs/*.pem
+server/nginx/certs/*.key
+
+# --- emotion 含独立 .git，作为本地参考不纳入 monorepo ---
+# 需要纳入时：删除 emotion-2.1.0/emotion-2.1.0/.git 后移除此行并 git add
+emotion-2.1.0/
+
+# --- Cursor 本地缓存（Plans/Rules 保留）---
+.cursor/plans/*.tmp
+.cursor/**/cache/
