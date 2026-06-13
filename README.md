@@ -24,6 +24,24 @@ gh auth login
 git push -u origin main
 ```
 
+### Cursor 斜杠命令
+
+在 **Agent 聊天框**输入 `/`，选择：
+
+| 命令 | 作用 |
+|------|------|
+| **`/release [版本] [说明]`** | 正式发版：更新版本号 + tag + 推 GitHub |
+| **`/push [commit message]`** | 日常提交并推送（不发版） |
+
+示例：
+
+```text
+/release 0.2.0 Phase 2 心情记录首版
+/push feat: 完成 mood 实体
+```
+
+Skill 文件：`.cursor/skills/release/`、`.cursor/skills/push/`
+
 ### 日常改动推送
 
 ```powershell
