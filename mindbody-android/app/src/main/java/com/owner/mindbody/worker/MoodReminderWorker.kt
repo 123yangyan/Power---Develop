@@ -28,7 +28,7 @@ class MoodReminderWorker(
                 "心情记录提醒",
                 android.app.NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "定时提醒记录价值感与耗能坐标"
+                description = "定时提醒选择情绪角色（内在剧场）；锁屏时可全屏探查"
             }
             context.getSystemService(android.app.NotificationManager::class.java)
                 ?.createNotificationChannel(channel)

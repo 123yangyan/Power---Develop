@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.MindBody" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 探查窗口：透明背景，由 Compose 绘制遮罩与 Bottom Sheet -->
+    <style name="Theme.MindBody.Transparent" parent="Theme.MindBody">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

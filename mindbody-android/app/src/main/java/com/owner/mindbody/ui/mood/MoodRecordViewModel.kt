@@ -42,6 +42,12 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
     private val _hasCoordSelection = MutableStateFlow(false)
     val hasCoordSelection: StateFlow<Boolean> = _hasCoordSelection.asStateFlow()
 
+    private val _selectedRoleId = MutableStateFlow<String?>(null)
+    val selectedRoleId: StateFlow<String?> = _selectedRoleId.asStateFlow()
+
+    val selectedRole: EmotionRole?
+        get() = EmotionRoles.findById(_selectedRoleId.value)
+
     private val _diaryText = MutableStateFlow("")
     val diaryText: StateFlow<String> = _diaryText.asStateFlow()
 
@@ -97,7 +103,23 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
         _coordX.value = x
         _coordY.value = y
         _hasCoordSelection.value = true
+        _selectedRoleId.value = null
         _error.value = null
+    }
+
+    /** 选择情绪角色，自动映射坐标 */
+    fun pickRole(role: EmotionRole) {
+        _selectedRoleId.value = role.id
+        _coordX.value = role.coordX
+        _coordY.value = role.coordY
+        _hasCoordSelection.value = true
+        _error.value = null
+    }
+
+    /** 场景 A：一键捕获角色并保存（无日记正文） */
+    fun quickCaptureRole(role: EmotionRole, onSaved: () -> Unit = {}) {
+        pickRole(role)
+        saveEntry(onSaved)
     }
 
     fun setDiaryText(text: String) {
@@ -109,12 +131,13 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
         _coordX.value = 0
         _coordY.value = 0
         _hasCoordSelection.value = false
+        _selectedRoleId.value = null
         _error.value = null
     }
 
     fun saveEntry(onSaved: () -> Unit = {}) {
         if (!_hasCoordSelection.value) {
-            _error.value = "请先在网格中点选坐标"
+            _error.value = "请先选择一个情绪角色"
             return
         }
         if (_saving.value) return
@@ -131,7 +154,8 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
                     coordX = _coordX.value,
                     coordY = _coordY.value,
                     occurredAt = occurredAt,
-                    hrAtEntry = hrAtEntry
+                    hrAtEntry = hrAtEntry,
+                    roleId = _selectedRoleId.value
                 )
                 moodPreferences.setLastReminderAt(System.currentTimeMillis())
                 _saveSuccess.value = true
@@ -147,7 +171,7 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateEntry(entry: MoodEntryEntity, onUpdated: (MoodEntryEntity) -> Unit) {
         if (!_hasCoordSelection.value) {
-            _error.value = "请先在网格中点选坐标"
+            _error.value = "请先选择一个情绪角色"
             return
         }
         if (_saving.value) return
@@ -162,7 +186,8 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
                     coordX = _coordX.value,
                     coordY = _coordY.value,
                     occurredAt = entry.occurredAt,
-                    hrAtEntry = entry.hrAtEntry
+                    hrAtEntry = entry.hrAtEntry,
+                    roleId = _selectedRoleId.value
                 )
                 if (updated != null) onUpdated(updated) else _error.value = "记录不存在"
             } catch (_: Exception) {
@@ -196,6 +221,7 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
     fun loadForEdit(entry: MoodEntryEntity) {
         _coordX.value = entry.coordX
         _coordY.value = entry.coordY
+        _selectedRoleId.value = entry.roleId
         _hasCoordSelection.value = true
         _diaryText.value = entry.fact
         _error.value = null

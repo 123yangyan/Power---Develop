@@ -6,11 +6,11 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品说明：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-13
+**最后更新**：2026-06-14
 
 ---
 
-## 索引（已实现 29 条）
+## 索引（已实现 30 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -43,6 +43,7 @@
 | F-P2-010 | 同日序号 dailyEntryIndex | wave-a-daily-index |
 | F-P2-011 | 强弹窗 CheckIn + snooze/逃避记录 | wave-b-checkin-dialog |
 | F-P2-012 | 历史 CoordMiniBadge 与分页增强 | wave-c-history-polish |
+| F-P2-013 | 情绪角色化 UI v4（探查抽屉 + 沉浸记录） | emotion-ui-v4 |
 
 路径均相对于 `app/src/main/java/com/owner/mindbody/`。
 
@@ -383,18 +384,19 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
-- **目的**：隐藏解锁开发者模式，集中展示 App 内 BLE/同步运行日志，支持复制。
-- **入口**：设备页连点版本信息 7 次 →「查看运行日志」→ `DeveloperLogScreen`
-- **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/device/DeviceScreen.kt`
-- **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；`AppLogBuffer` 为每条日志分配单调递增 `id` 供 LazyColumn key；`PolarBleManager.setStatus` 管道化 status 文案；解锁状态持久化 DataStore。
-- **验收要点**：未解锁无入口；日志页可复制全部/选中片段/清空；连接后进入日志页不闪退；启动与自动连日志可见。
+- **目的**：隐藏解锁开发者模式，集中展示 App 内 BLE/同步运行日志，支持复制；并提供 Room 各表行数看板验证落库。
+- **入口**：设备页连点版本信息 7 次 → 开发者卡片 →「运行日志」/「storage 看板」
+- **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`data/StorageStatsRepository.kt`、`data/local/StorageStatsDao.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/developer/DeveloperStorageScreen.kt`、`ui/device/DeviceScreen.kt`
+- **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；storage 看板经 `app.storage.storageStats.loadStats()` 统计，刷新前先 `flushAll()`；读写仍经 `AppStorage` 门面。
+- **验收要点**：未解锁无入口；日志页可复制全部/清空；storage 看板显示 13 张表行数与最近更新时间；连接手环后刷新可见 `hr_samples` / `hr_247_samples` 等增长。
 
 #### 变更记录
 
+- 2026-06-14：开发者 storage 看板（13 表 COUNT + 刷新）(#developer-storage-dashboard)
 - 2026-06-13：修复运行日志 LazyColumn 重复 key 闪退 (#phase1-android-polar)
 - 2026-06-13：开发者模式 + 运行日志页 (#phase1-android-polar)
 
@@ -407,19 +409,20 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: mood-entity |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
 - **目的**：本地持久化心情记录，为 Phase 3 同步就绪。
 - **入口**：`AppStorage.mood` → `MoodRepository`
-- **关键文件**：`data/local/MoodEntryEntity.kt`、`MoodEntryDao.kt`；`data/MoodRepository.kt`；`AppDatabase` v5 + `MIGRATION_4_5`
+- **关键文件**：`data/local/MoodEntryEntity.kt`、`MoodEntryDao.kt`；`data/MoodRepository.kt`；`AppDatabase` v6 + `MIGRATION_4_5` + `MIGRATION_5_6`（roleId）
 - **调用约定**：实体含 `@Embedded sync: SyncMeta`；DAO 实现 `SyncableDao`；功能层经 `app.storage.mood` 读写。
 - **验收要点**：`getUnsynced()` 可返回 PENDING 记录；迁移不丢 v4 数据。
 
 #### 变更记录
 
 - 2026-06-13：mood_entries 表 + Repository (#mood-entity)
+- 2026-06-14：增加 roleId 字段 v6 迁移 (#emotion-ui-v4)
 
 ---
 
@@ -428,18 +431,19 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: value-energy-grid |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
-- **目的**：移植 emotion 价值感×耗能坐标点选。
-- **关键文件**：`ui/mood/ValueEnergyGrid.kt`、`ui/mood/MoodQuadrant.kt`
-- **调用约定**：点击映射 coord -4~+4；象限名与 emotion 一致。
-- **验收要点**：落点与坐标显示一致；四象限背景可见。
+- **目的**：移植 emotion 价值感×耗能坐标点选（**记录主路径已退役**）。
+- **关键文件**：`ui/mood/ValueEnergyGrid.kt`（`@Deprecated`）、`ui/mood/MoodQuadrant.kt`
+- **调用约定**：新记录使用 `ActorStage` / `EmotionRole`；历史无 `roleId` 条目仍通过 `CoordMiniBadge` 只读展示 coord。
+- **验收要点**：记录页不再出现四象限网格。
 
 #### 变更记录
 
 - 2026-06-13：Compose 网格组件 (#value-energy-grid)
+- 2026-06-14：记录主路径退役，角色化 UI 替代 (#binary-visual-refactor)
 
 ---
 
@@ -454,12 +458,13 @@
 
 - **目的**：多行日记输入 + v3.7 Enter 列表续号。
 - **关键文件**：`ui/mood/DiaryInput.kt`、`DiaryListContinue.kt`
-- **验收要点**：有序/无序列表 Enter 续号；记录页 scrollable 固定高度滚动。
+- **验收要点**：有序/无序列表 Enter 续号；MODAL 等场景 scrollable + heightIn；场景 B 用 fillHeight 占满父 Box 内部滚动。
 
 #### 变更记录
 
 - 2026-06-13：DiaryInput 组件 (#diary-input)
 - 2026-06-13：v3.7 列表续号 (#wave-a-diary-continue)
+- 2026-06-14：场景 B fillHeight 模式，避免 verticalScroll 与 weight 冲突 (#keyboard-crash-fix)
 
 ---
 
@@ -468,19 +473,21 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: mood-record-screen |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
-- **目的**：组装坐标+日记+保存，经 ViewModel 写 `storage.mood`。
-- **入口**：底部导航「记录」→ `MoodRecordScreen`
-- **关键文件**：`MoodRecordScreen.kt`、`MoodRecordViewport.kt`、`MoodRecordViewModel.kt`、`MoodSettingsSection.kt`
-- **调用约定**：`MoodRecordViewport` 共用 page/popup/modal；显示今日序号与上次记录时间。
-- **验收要点**：真机可完成点选→写日记→保存。
+- **目的**：二分法记录页 —— 场景 A `ActorStage` 4 人极速指认 / 场景 B 键盘沉浸倾诉。
+- **入口**：底部导航「记录」→ `MoodRecordScreen`；提醒设置 → 底部导航「设备」→ `DeviceMoodReminderSection`
+- **关键文件**：`MoodRecordScreen.kt`、`MoodRecordViewport.kt`、`ActorStage.kt`、`EmotionCapsuleToolbar.kt`、`DiaryInput.kt`、`MoodRecordViewModel.kt`
+- **调用约定**：场景 A 点 4 首发角色且无日记 → `quickCaptureRole` 一键保存；有日记或进入写作 → 场景 B 胶囊 4+➕ + 日记句尾微型标签；提醒设置在 `DeviceScreen`；进入场景 B 后 LaunchedEffect 延迟聚焦，禁止在 DiaryInput 挂载前 requestFocus。
+- **验收要点**：记录页默认 2×2 舞台无设置区；点「想倾诉更多」不闪退、键盘弹起；场景 B Column 统一 imePadding；键盘可见时隐藏免责声明。
 
 #### 变更记录
 
 - 2026-06-13：记录页 + ViewModel (#mood-record-screen)
+- 2026-06-14：二分法视觉重构 — ActorStage + 设置迁至设备页 (#binary-visual-refactor)
+- 2026-06-14：键盘 focus 时序 + Scene B IME 布局修复 (#keyboard-crash-fix)
 
 ---
 
@@ -509,18 +516,22 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: reminder |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
 - **目的**：替代 emotion daily-checkin-service，定时提醒记录。
 - **关键文件**：`worker/MoodReminderWorker.kt`、`MoodReminderDeliver.kt`、`MoodReminderScheduler.kt`；`MoodCheckInActivity.kt`；`data/MoodPreferences.kt`
-- **调用约定**：间隔 1–1440 分钟；静默可编辑；strongPopup 全屏 CheckIn；Esc/稍后写逃避记录 + 20min snooze；测试提醒 30s/60s。
-- **验收要点**：`MindBodyApplication.onCreate` 注册周期任务；静默时段不弹通知。
+- **调用约定**：间隔 1–1440 分钟；静默可编辑；**strongPopup 一律经 FullScreenIntent 通知投递**（禁止 Worker 内 `startActivity`，targetSdk 35 BAL 合规）；`EXTRA_SOFT_DISMISS` 经 PendingIntent 传递；未开通知则不 post；Esc/稍后写逃避记录 + 20min snooze。
+- **验收要点**：后台/测试提醒无 `Background activity launch blocked` logcat；锁屏 FullScreenIntent 亮屏；设备页可提示开启全屏通知权限。
 
 #### 变更记录
 
 - 2026-06-13：WorkManager + MoodPreferences (#reminder)
+- 2026-06-14：强弹窗与弱通知拆分，移除 fullScreenIntent 与旧通知文案 (#emotion-ui-v4)
+- 2026-06-14：恢复 FullScreenIntent + 锁屏探查 + 通知栏「稍后」快捷操作 (#lockscreen-probe)
+- 2026-06-14：探查 UX 修复 — 前台 soft dismiss 分流、设置区/写作区布局分离 (#probe-ux-fix)
+- 2026-06-14：BAL 修复 — 移除 Worker 直接 launch，统一通知通道 + FSI 能力检测 (#bal-fix)
 
 ---
 
@@ -550,18 +561,19 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: navigation |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
 - **目的**：主导航整合记录与历史。
 - **关键文件**：`ui/navigation/AppNavigation.kt`；`ui/components/FloatingIslandNav.kt`（`mood_record` / `mood_history`）
-- **调用约定**：通知 deep link `MainActivity.EXTRA_NAVIGATE_TO=mood_record`。
-- **验收要点**：五页签可切换；FTU 页仍隐藏底栏。
+- **调用约定**：通知 deep link `MainActivity.EXTRA_NAVIGATE_TO=mood_record`；记录页键盘可见时 NavHost 底栏 padding 降为 0，避免三重挤压。
+- **验收要点**：五页签可切换；FTU 页仍隐藏底栏；记录页键盘弹起内容区不被底栏占位叠加。
 
 #### 变更记录
 
 - 2026-06-13：导航扩展 (#navigation)
+- 2026-06-14：记录页 IME 可见时取消 NavHost 88dp 底 padding (#keyboard-crash-fix)
 
 ---
 
@@ -608,19 +620,23 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2 对齐 emotion v3.7 / todo: wave-b-checkin-dialog, wave-b-snooze-avoidance |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
-- **目的**：对齐 daily-checkin-service 双通道提醒与 Esc snooze。
-- **入口**：`MoodReminderDeliver` → 通知 + `MoodCheckInActivity`
-- **关键文件**：`MoodCheckInActivity.kt`、`MoodCheckInConstants.kt`；`MoodRecordViewModel.recordSnooze()`
-- **调用约定**：逃避记录 `fact=逃避记录, coord(0,0)`；snoozeCount 触发 20min 短间隔。
-- **验收要点**：强弹窗可关；稍后写入逃避记录。
+- **目的**：对齐 daily-checkin-service 双通道提醒；PRD v4 场景 A 半屏 Bottom Sheet 极速盲操。
+- **入口**：`MoodReminderDeliver`（FullScreenIntent 通知）→ `MoodCheckInActivity`（强弹窗）；弱通知 → `MainActivity` 记录页
+- **关键文件**：`MoodCheckInActivity.kt`（透明主题 + 锁屏穿透）；`MobileCheckInDrawer.kt`、`PriorityDock.kt`；`MoodCheckInConstants.kt`；`MoodRecordViewModel.quickCaptureRole()`；`MoodReminderDeliver.kt`；`MoodReminderSnoozeReceiver.kt`
+- **调用约定**：strongPopup → **仅** FullScreenIntent 通知拉起 Activity（Worker 禁止 direct launch）；soft dismiss 经 `EXTRA_SOFT_DISMISS`；API 34+ `canUseFullScreenIntent` 未授权时仍发 Heads-up，设备页提示开权限。
+- **验收要点**：无 BAL 拦截 logcat；锁屏自动弹 Sheet；点击 Heads-up 进入探查。
 
 #### 变更记录
 
 - 2026-06-13：CheckIn + snooze (#wave-b-checkin-dialog)
+- 2026-06-14：强弹窗不再并发旧版系统通知 (#emotion-ui-v4)
+- 2026-06-14：锁屏极速探查 — FullScreenIntent + setShowWhenLocked + Keyguard 解锁引导 (#lockscreen-probe)
+- 2026-06-14：探查 UX — soft dismiss、Sheet 全展开、记一笔回栈 (#probe-ux-fix)
+- 2026-06-14：BAL 合规 — soft dismiss 改 Intent extra，移除后台 startActivity (#bal-fix)
 
 ---
 
@@ -629,17 +645,43 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2 对齐 emotion v3.7 / todo: wave-c-history-polish |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-14 |
 
 #### 已实现方案
 
-- **目的**：历史列表视觉与分页对齐 emotion v3.7。
-- **关键文件**：`CoordMiniBadge.kt`、`MoodHistoryRowBuilder.kt`；`MoodHistoryScreen` pager
-- **验收要点**：极性着色、逃避 badge、页码跳转。
+- **目的**：历史列表视觉与分页对齐 emotion v3.7；支持角色图标展示。
+- **关键文件**：`RoleMiniBadge.kt`、`CoordMiniBadge.kt`、`MoodHistoryRowBuilder.kt`；`MoodHistoryScreen` pager
+- **验收要点**：有 roleId 显示角色微缩图；无 roleId 回退象限 badge；极性着色、逃避 badge、页码跳转。
 
 #### 变更记录
 
 - 2026-06-13：历史 polish (#wave-c-history-polish)
+
+---
+
+### F-P2-013 情绪角色化 UI v4（探查抽屉 + 沉浸记录）
+
+| 字段 | 值 |
+|------|-----|
+| Plan | phase2心情记录移植 / PRD v4.0 情绪日记 UI 优化 |
+| 最后更新 | 2026-06-14 |
+
+#### 已实现方案
+
+- **目的**：18 角色二分法 UI —— 主动记录页场景 A/B + 探查窗 9 皮克斯。
+- **入口**：定时提醒 → `MoodCheckInActivity` + `MobileCheckInDrawer`（9 人 3×3 不变）；主动记录 → `MoodRecordScreen`（4 人 ActorStage）
+- **关键文件**：`ActorStage.kt`、`EmotionRole.kt`（`recordPageStageLineup`）、`EmotionCapsuleToolbar.kt`、`DiaryInput.kt`、`MobileCheckInDrawer.kt`、`MoodRecordViewport.kt`
+- **调用约定**：记录页首发 4 人（心流/内耗/麻木/焦焦）；探查窗首发 9 皮克斯；coord 静默写入不变。
+- **验收要点**：记录页场景 A 2×2 + 展开 18 人；场景 B 胶囊贴键盘 + 句尾微型标签；探查窗仍为 9+9；Android 14/15 键盘弹起无 Insets 高度 0 崩溃。
+
+#### 变更记录
+
+- 2026-06-14：PRD v4.0 情绪角色化 UI (#emotion-ui-v4)
+- 2026-06-14：记录页写作优先 UX：角色大网格改 BottomSheet，折叠条 + 继续写作 (#emotion-ui-v4)
+- 2026-06-14：新增焦焦/迷茫/羞羞 PNG 图标，角色扩至 16 人 (#emotion-ui-v4)
+- 2026-06-14：探查弹窗首发改为皮克斯 9 人 3×3，「更多」仅扩展角色 (#emotion-ui-v4)
+- 2026-06-14：二分法视觉重构 — 记录页 ActorStage 4 人 + 设置迁设备页 (#binary-visual-refactor)
+- 2026-06-14：键盘 focus 时序 + IME 布局加固；MainActivity adjustResize (#keyboard-crash-fix)
 
 ---
 

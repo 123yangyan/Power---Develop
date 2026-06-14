@@ -5,12 +5,23 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.owner.mindbody.data.sync.SyncableDao
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface Hr247SampleDao : SyncableDao<Hr247SampleEntity> {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(samples: List<Hr247SampleEntity>)
+
+    /** 获取指定时间范围内的 24/7 心率样本，按时间升序 */
+    @Query(
+        """
+        SELECT * FROM hr_247_samples
+        WHERE timestamp >= :startMs AND timestamp <= :endMs
+        ORDER BY timestamp ASC
+        """
+    )
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<Hr247SampleEntity>>
 
     @Query(
         """

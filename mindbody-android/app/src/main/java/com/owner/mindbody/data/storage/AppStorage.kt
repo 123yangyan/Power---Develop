@@ -14,6 +14,7 @@ import com.owner.mindbody.data.PpiRepository
 import com.owner.mindbody.data.SleepRepository
 import com.owner.mindbody.data.SkinTemp247Repository
 import com.owner.mindbody.data.SkinTempRepository
+import com.owner.mindbody.data.StorageStatsRepository
 import com.owner.mindbody.data.TrainingRepository
 import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.sync.DeviceSyncManager
@@ -44,6 +45,9 @@ class AppStorage(context: Context) {
 
     // Phase 2 心情记录
     val mood: MoodRepository = MoodRepository(database)
+
+    /** 开发者看板：各表行数统计（只读） */
+    val storageStats: StorageStatsRepository = StorageStatsRepository(database, this)
 
     val sync: SyncManager = SyncManager(hr)
     val deviceSyncPreferences: DeviceSyncPreferences = DeviceSyncPreferences(context)

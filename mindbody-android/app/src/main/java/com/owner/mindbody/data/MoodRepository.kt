@@ -21,7 +21,8 @@ class MoodRepository(private val database: AppDatabase) {
         coordX: Int,
         coordY: Int,
         occurredAt: Long = System.currentTimeMillis(),
-        hrAtEntry: Int? = null
+        hrAtEntry: Int? = null,
+        roleId: String? = null
     ): Long {
         val now = System.currentTimeMillis()
         val entity = MoodEntryEntity(
@@ -30,6 +31,7 @@ class MoodRepository(private val database: AppDatabase) {
             coordY = coordY,
             occurredAt = occurredAt,
             hrAtEntry = hrAtEntry,
+            roleId = roleId,
             sync = SyncMeta(createdAt = now, updatedAt = now)
         )
         return dao.insert(entity)
@@ -41,7 +43,8 @@ class MoodRepository(private val database: AppDatabase) {
         coordX: Int,
         coordY: Int,
         occurredAt: Long,
-        hrAtEntry: Int?
+        hrAtEntry: Int?,
+        roleId: String? = null
     ): MoodEntryEntity? {
         val existing = dao.getById(id) ?: return null
         val updated = existing.copy(
@@ -50,6 +53,7 @@ class MoodRepository(private val database: AppDatabase) {
             coordY = coordY,
             occurredAt = occurredAt,
             hrAtEntry = hrAtEntry,
+            roleId = roleId,
             sync = existing.sync.copy(
                 updatedAt = System.currentTimeMillis(),
                 syncState = SyncState.PENDING.name

@@ -30,9 +30,12 @@ import com.owner.mindbody.ui.theme.MindBodyShapes
 import kotlin.math.roundToInt
 
 /**
- * 价值感 × 耗能 四象限点选网格。
- * X 轴：左=排斥(-4)，右=愉悦(+4)；Y 轴：上=高耗能(+4)，下=轻松(-4)。
+ * 价值感 × 耗能 四象限点选网格（已退役：记录主路径改角色化 UI，仅保留供历史 coord 只读参考）。
  */
+@Deprecated(
+    message = "记录主路径已退役；新记录请使用 EmotionRole / ActorStage。历史无 roleId 条目仍通过 CoordMiniBadge 展示 coord。",
+    replaceWith = ReplaceWith("ActorStage", "com.owner.mindbody.ui.mood.ActorStage")
+)
 @Composable
 fun ValueEnergyGrid(
     coordX: Int,

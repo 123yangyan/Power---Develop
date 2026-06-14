@@ -205,7 +205,10 @@ fun MoodHistoryScreen(
             ) {
                 Column {
                     Text(
-                        text = "编辑记录 · ${getQuadrantLabel(editingEntry!!.coordX, editingEntry!!.coordY)}",
+                        text = "编辑记录 · ${
+                            EmotionRoles.findById(editingEntry!!.roleId)?.displayName
+                                ?: getQuadrantLabel(editingEntry!!.coordX, editingEntry!!.coordY)
+                        }",
                         style = CardTitle,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
@@ -335,7 +338,11 @@ private fun HistoryEntryCard(
                             )
                         }
                     }
-                    CoordMiniBadge(coordX = view.coordX, coordY = view.coordY)
+                    RoleMiniBadge(
+                        roleId = view.roleId,
+                        coordX = view.coordX,
+                        coordY = view.coordY
+                    )
                 }
                 Row(
                     modifier = Modifier.padding(top = 8.dp),

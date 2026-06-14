@@ -23,7 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrainingSessionEntity::class,
         MoodEntryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,6 +40,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sleepSessionDao(): SleepSessionDao
     abstract fun trainingSessionDao(): TrainingSessionDao
     abstract fun moodEntryDao(): MoodEntryDao
+    abstract fun storageStatsDao(): StorageStatsDao
 
     companion object {
         @Volatile
@@ -323,6 +324,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 -> v6：mood_entries 增加 roleId（情绪角色 ID）。 */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mood_entries ADD COLUMN roleId TEXT")
+            }
+        }
+
         /** v4 -> v5：心情记录表 mood_entries。 */
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -360,7 +368,13 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mindbody.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .build()
                     .also { instance = it }

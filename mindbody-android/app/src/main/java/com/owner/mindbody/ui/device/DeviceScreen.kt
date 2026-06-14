@@ -25,11 +25,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.owner.mindbody.worker.MoodReminderDeliver
+import com.owner.mindbody.data.MoodPreferences
+import com.owner.mindbody.ui.mood.MoodRecordViewModel
+import com.owner.mindbody.ui.mood.MoodSettingsSection
 import com.owner.mindbody.BuildConfig
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
@@ -46,6 +55,7 @@ import com.owner.mindbody.ui.theme.StatValue
 fun DeviceScreen(
     onNavigateToFtu: (String) -> Unit,
     onNavigateToDeveloperLog: () -> Unit,
+    onNavigateToDeveloperStorage: () -> Unit,
     viewModel: DeviceViewModel = viewModel()
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
@@ -216,6 +226,8 @@ fun DeviceScreen(
 
         PairingTipsCard()
 
+        DeviceMoodReminderSection()
+
         Text(text = "扫描结果", style = CardTitle)
         scanned.forEach { device ->
             DeviceItem(device = device, onConnect = { viewModel.connect(device.deviceId) })
@@ -223,21 +235,34 @@ fun DeviceScreen(
 
         if (developerMode) {
             PremiumCard(contentPadding = 16.dp) {
-                Text(text = "开发者 · 运行日志", style = CardTitle)
+                Text(text = "开发者选项", style = CardTitle)
                 Text(
-                    text = "查看 App 内 BLE 与同步运行记录，支持复制全部日志。",
+                    text = "查看 BLE 运行日志，或检查 Room 各表是否已成功落库。",
                     style = StatLabel,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-                Button(
-                    onClick = onNavigateToDeveloperLog,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo),
-                    shape = MindBodyShapes.RadioOption
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("查看运行日志")
+                    Button(
+                        onClick = onNavigateToDeveloperLog,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo),
+                        shape = MindBodyShapes.RadioOption
+                    ) {
+                        Text("运行日志")
+                    }
+                    Button(
+                        onClick = onNavigateToDeveloperStorage,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.Emerald),
+                        shape = MindBodyShapes.RadioOption
+                    ) {
+                        Text("storage 看板")
+                    }
                 }
             }
         }
@@ -250,6 +275,62 @@ fun DeviceScreen(
                 .padding(top = 8.dp, bottom = 16.dp)
                 .clickable { viewModel.onVersionAreaTap() }
         )
+    }
+}
+
+@Composable
+private fun DeviceMoodReminderSection(
+    viewModel: MoodRecordViewModel = viewModel()
+) {
+    val reminderInterval by viewModel.reminderIntervalMinutes.collectAsState()
+    val quietStart by viewModel.quietStart.collectAsState()
+    val quietEnd by viewModel.quietEnd.collectAsState()
+    val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
+    val strongPopup by viewModel.strongPopup.collectAsState()
+    val todayCount by viewModel.todayEntryCount.collectAsState()
+
+    var showSettings by remember { mutableStateOf(true) }
+    var intervalInput by remember(reminderInterval) { mutableStateOf(reminderInterval.toString()) }
+    var quietStartInput by remember(quietStart) { mutableStateOf(quietStart) }
+    var quietEndInput by remember(quietEnd) { mutableStateOf(quietEnd) }
+
+    val context = LocalContext.current
+    val showFsiHint = remember {
+        !MoodReminderDeliver.canUseFullScreenIntent(context)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MoodSettingsSection(
+            showSettings = showSettings,
+            onShowSettingsChange = { showSettings = it },
+            notificationsEnabled = notificationsEnabled,
+            onNotificationsChange = viewModel::setNotificationsEnabled,
+            strongPopup = strongPopup,
+            onStrongPopupChange = viewModel::setStrongPopup,
+            intervalInput = intervalInput,
+            onIntervalInputChange = { intervalInput = it },
+            onApplyInterval = {
+                viewModel.setReminderInterval(
+                    intervalInput.toIntOrNull() ?: MoodPreferences.DEFAULT_REMINDER_INTERVAL_MINUTES
+                )
+            },
+            quietStartInput = quietStartInput,
+            onQuietStartChange = { quietStartInput = it },
+            quietEndInput = quietEndInput,
+            onQuietEndChange = { quietEndInput = it },
+            onApplyQuietHours = { viewModel.setQuietHours(quietStartInput, quietEndInput) },
+            todayEntryCount = todayCount,
+            onTestReminder30s = { viewModel.scheduleTestReminder(30) },
+            onTestReminder60s = { viewModel.scheduleTestReminder(60) }
+        )
+        if (showFsiHint) {
+            Text(
+                text = MoodReminderDeliver.FULL_SCREEN_INTENT_HINT,
+                fontSize = 12.sp,
+                color = MindBodyColors.OnBackgroundSecondary,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
     }
 }
 

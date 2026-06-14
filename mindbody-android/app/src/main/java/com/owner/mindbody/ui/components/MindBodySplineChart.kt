@@ -36,8 +36,10 @@ fun MindBodySplineChart(
     restingBpm: Int = 70,
     modifier: Modifier = Modifier
 ) {
-    val chartPoints = SplineChartUtils.downsampleByTime(samples)
-    val timeWindow = SplineChartUtils.computeTimeWindow(chartPoints)
+    // 10 秒降采样 → 固定 1 小时视窗 → 仅绘制视窗内点
+    val allPoints = SplineChartUtils.downsampleByTime(samples)
+    val timeWindow = SplineChartUtils.computeTimeWindow(allPoints)
+    val chartPoints = SplineChartUtils.filterPointsInWindow(allPoints, timeWindow)
     val bpmRange = SplineChartUtils.computeBpmRange(chartPoints, restingBpm)
     val timeLabels = SplineChartUtils.formatTimeLabels(timeWindow)
 
@@ -118,7 +120,7 @@ fun MindBodySplineChart(
                 if (chartPoints.size >= 2) {
                     val pixelPoints = chartPoints.map { pt ->
                         Offset(
-                            x = SplineChartUtils.minutesToX(pt.minutesOfDay, width, timeWindow),
+                            x = SplineChartUtils.timestampToX(pt.timestampMs, width, timeWindow),
                             y = SplineChartUtils.bpmToY(pt.bpm.toFloat(), height, bpmRange)
                         )
                     }
@@ -152,7 +154,7 @@ fun MindBodySplineChart(
                         color = MindBodyColors.HeartRed,
                         radius = 4f,
                         center = Offset(
-                            SplineChartUtils.minutesToX(pt.minutesOfDay, width, timeWindow),
+                            SplineChartUtils.timestampToX(pt.timestampMs, width, timeWindow),
                             SplineChartUtils.bpmToY(pt.bpm.toFloat(), height, bpmRange)
                         )
                     )
@@ -199,8 +201,8 @@ fun MindBodySplineChart(
         }
 
         Text(
-            text = "心情打点 · Phase 2 即将推出",
-            style = StatLabel.copy(color = MindBodyColors.Amber.copy(alpha = 0.8f)),
+            text = "最近 1 小时 · 10 秒采样",
+            style = StatLabel.copy(color = MindBodyColors.OnBackgroundSecondary),
             modifier = Modifier.padding(top = 6.dp)
         )
     }

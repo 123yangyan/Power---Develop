@@ -16,6 +16,8 @@ data class MoodHistoryRowView(
     val coordY: Int,
     val intensity: Int,
     val polarity: MoodPolarity,
+    val roleId: String?,
+    val roleDisplayName: String?,
     val diaryBody: String,
     val isAvoidance: Boolean,
     val hrLabel: String?
@@ -30,16 +32,19 @@ fun buildHistoryRowView(
 ): MoodHistoryRowView {
     val zdt = Instant.ofEpochMilli(entry.occurredAt).atZone(zoneId)
     val avoidance = isAvoidanceEntry(entry.fact)
+    val role = EmotionRoles.findById(entry.roleId)
     return MoodHistoryRowView(
         id = entry.id,
         time = timeFormatter.format(zdt),
         dateKey = moodEntryDateKey(entry.occurredAt, zoneId),
         dateLabel = dateLabelFormatter.format(zdt),
-        quadrantLabel = getQuadrantLabel(entry.coordX, entry.coordY),
+        quadrantLabel = role?.displayName ?: getQuadrantLabel(entry.coordX, entry.coordY),
         coordX = entry.coordX,
         coordY = entry.coordY,
         intensity = coordIntensity(entry.coordY),
         polarity = moodPolarity(entry.coordX, entry.coordY),
+        roleId = entry.roleId,
+        roleDisplayName = role?.displayName,
         diaryBody = if (avoidance) entry.fact else entry.fact.ifBlank { "" },
         isAvoidance = avoidance,
         hrLabel = entry.hrAtEntry?.let { "$it BPM（估计关联）" }

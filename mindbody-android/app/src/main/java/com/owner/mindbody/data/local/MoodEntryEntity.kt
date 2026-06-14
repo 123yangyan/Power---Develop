@@ -30,6 +30,8 @@ data class MoodEntryEntity(
     val occurredAt: Long,
     /** 保存时刻关联的心率估计值（±5 分钟窗口或短连接快照） */
     val hrAtEntry: Int? = null,
+    /** 情绪角色 ID（如 role_flow）；与 coordX/coordY 静默映射，向后兼容旧记录 */
+    val roleId: String? = null,
     @Embedded
     val sync: SyncMeta = SyncMeta()
 )

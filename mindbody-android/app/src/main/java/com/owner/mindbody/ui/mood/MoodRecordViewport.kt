@@ -1,11 +1,16 @@
 package com.owner.mindbody.ui.mood
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,11 +21,19 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.owner.mindbody.data.MoodPreferences
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import com.owner.mindbody.ui.components.PremiumCard
 import com.owner.mindbody.ui.theme.CardTitle
 import com.owner.mindbody.ui.theme.MindBodyColors
@@ -30,8 +43,9 @@ enum class RecordViewportVariant {
 }
 
 /**
- * 记录页 / 弹窗共用布局，对齐 emotion RecordViewportForm.tsx。
- * 手机端：上坐标、下日记（保留 v3.7 信息架构）。
+ * 记录页 / 弹窗共用布局。
+ * PAGE：场景 A（ActorStage 极速指认）/ 场景 B（键盘沉浸倾诉）二分法。
+ * MODAL：历史编辑弹窗 —— 紧凑角色网格。
  */
 @Composable
 fun MoodRecordViewport(
@@ -39,21 +53,22 @@ fun MoodRecordViewport(
     dateLabel: String,
     dailyIndexLabel: String?,
     lastRecordLabel: String,
-    coordX: Int,
-    coordY: Int,
-    hasCoordSelection: Boolean,
-    onPickCoord: (Int, Int) -> Unit,
+    selectedRoleId: String?,
+    onSelectRole: (EmotionRole) -> Unit,
     diaryText: String,
     onDiaryChange: (String) -> Unit,
+    hasCoordSelection: Boolean,
     error: String?,
     saving: Boolean,
     saveSuccess: Boolean,
     isEdit: Boolean = false,
     onSave: () -> Unit,
     onCancel: (() -> Unit)? = null,
+    onStageRoleTap: ((EmotionRole) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isPopup = variant == RecordViewportVariant.POPUP
+    val isPage = variant == RecordViewportVariant.PAGE
     val saveLabel = when {
         saving -> "保存中…"
         saveSuccess -> "已收纳"
@@ -61,6 +76,170 @@ fun MoodRecordViewport(
         else -> "保存记录"
     }
 
+    if (isPage && !isEdit) {
+        val diaryFocusRequester = remember { FocusRequester() }
+        val density = LocalDensity.current
+        val imeBottom = WindowInsets.ime.getBottom(density)
+        val keyboardVisible = imeBottom > 0
+
+        var isWritingMode by remember { mutableStateOf(false) }
+        var showPickerSheet by remember { mutableStateOf(false) }
+        var refocusDiaryAfterPicker by remember { mutableStateOf(false) }
+
+        val stageRoles = remember { EmotionRoles.recordPageStageLineup() }
+        val selectedRole = remember(selectedRoleId) { EmotionRoles.findById(selectedRoleId) }
+        val sceneB = isWritingMode || keyboardVisible
+
+        LaunchedEffect(isWritingMode) {
+            if (isWritingMode) {
+                diaryFocusRequester.requestFocusAfterLayout()
+            }
+        }
+
+        LaunchedEffect(refocusDiaryAfterPicker) {
+            if (refocusDiaryAfterPicker) {
+                diaryFocusRequester.requestFocusAfterLayout()
+                refocusDiaryAfterPicker = false
+            }
+        }
+
+        LaunchedEffect(saveSuccess) {
+            if (saveSuccess) {
+                isWritingMode = false
+            }
+        }
+
+        Column(
+            modifier = modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!sceneB) {
+                Text(text = dateLabel, style = CardTitle)
+                dailyIndexLabel?.let {
+                    Text(it, fontSize = 13.sp, color = MindBodyColors.PrimaryIndigo)
+                }
+
+                ActorStage(
+                    roles = stageRoles,
+                    selectedRoleId = selectedRoleId,
+                    onSelectRole = { role ->
+                        onStageRoleTap?.invoke(role) ?: onSelectRole(role)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                TextButton(
+                    onClick = { showPickerSheet = true },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(
+                        text = "展开查看全部 ${EmotionRoles.all.size} 位情绪角色",
+                        fontSize = 13.sp,
+                        color = MindBodyColors.OnBackgroundSecondary
+                    )
+                }
+
+                PremiumCard(
+                    contentPadding = 16.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isWritingMode = true }
+                ) {
+                    Text(
+                        text = "✍️ 想倾诉更多？点击这里写下日记…",
+                        fontSize = 14.sp,
+                        color = MindBodyColors.OnBackgroundSecondary
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .imePadding(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(text = dateLabel, style = CardTitle.copy(fontSize = 15.sp))
+                    dailyIndexLabel?.let {
+                        Text(it, fontSize = 12.sp, color = MindBodyColors.PrimaryIndigo)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 120.dp)
+                    ) {
+                        DiaryInput(
+                            value = diaryText,
+                            onValueChange = onDiaryChange,
+                            placeholder = "写下此刻在做什么、感受如何…",
+                            minLines = 6,
+                            scrollable = false,
+                            fillHeight = true,
+                            autoFocus = false,
+                            focusRequester = diaryFocusRequester,
+                            selectedRole = selectedRole,
+                            onFocusChanged = { focused -> if (focused) isWritingMode = true },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    EmotionCapsuleToolbar(
+                        roles = stageRoles,
+                        selectedRoleId = selectedRoleId,
+                        onSelectRole = onSelectRole,
+                        showExpandAffordance = true,
+                        onExpandClick = { showPickerSheet = true },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (error != null) {
+                        Text(error, color = MindBodyColors.HeartRed, fontSize = 14.sp)
+                    }
+
+                    Button(
+                        onClick = onSave,
+                        enabled = !saving && hasCoordSelection,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo)
+                    ) {
+                        Text(
+                            when {
+                                saving -> "保存中…"
+                                saveSuccess -> "已收纳"
+                                !hasCoordSelection -> "请先选择角色"
+                                else -> saveLabel
+                            }
+                        )
+                    }
+
+                    if (!keyboardVisible) {
+                        Text(
+                            text = "关联心率标注为「估计关联」，非医疗诊断",
+                            fontSize = 11.sp,
+                            color = MindBodyColors.OnBackgroundSecondary
+                        )
+                    }
+                }
+            }
+        }
+
+        EmotionRolePickerSheet(
+            visible = showPickerSheet,
+            selectedRoleId = selectedRoleId,
+            onSelectRole = { role ->
+                onSelectRole(role)
+                if (isWritingMode || keyboardVisible) {
+                    refocusDiaryAfterPicker = true
+                }
+            },
+            onDismiss = { showPickerSheet = false }
+        )
+
+        return
+    }
+
+    // MODAL / POPUP / 编辑模式：可滚动紧凑布局
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -68,11 +247,7 @@ fun MoodRecordViewport(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (!isEdit) {
-            Text(
-                text = dateLabel,
-                style = CardTitle,
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
+            Text(text = dateLabel, style = CardTitle, modifier = Modifier.padding(bottom = 2.dp))
             dailyIndexLabel?.let {
                 Text(it, fontSize = 13.sp, color = MindBodyColors.PrimaryIndigo)
             }
@@ -84,12 +259,10 @@ fun MoodRecordViewport(
         }
 
         PremiumCard(contentPadding = 14.dp) {
-            Text("点选任务价值与耗能坐标", style = CardTitle, modifier = Modifier.padding(bottom = 8.dp))
-            ValueEnergyGrid(
-                coordX = coordX,
-                coordY = coordY,
-                hasSelection = hasCoordSelection,
-                onPick = onPickCoord
+            KeyboardAwareRoleSelector(
+                selectedRoleId = selectedRoleId,
+                onSelectRole = onSelectRole,
+                layout = RoleSelectorLayout.EditModal
             )
         }
 
@@ -101,7 +274,8 @@ fun MoodRecordViewport(
                 placeholder = "写下此刻在做什么、感受如何…",
                 minLines = if (isPopup) 4 else 5,
                 scrollable = !isPopup,
-                autoFocus = variant == RecordViewportVariant.PAGE && !isEdit
+                autoFocus = false,
+                selectedRole = EmotionRoles.findById(selectedRoleId)
             )
         }
 
@@ -120,8 +294,8 @@ fun MoodRecordViewport(
             }
             Button(
                 onClick = onSave,
-                enabled = !saving,
-                modifier = Modifier.weight(if (onCancel != null) 1f else 1f),
+                enabled = !saving && hasCoordSelection,
+                modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo)
             ) {
                 Text(saveLabel)
@@ -132,12 +306,6 @@ fun MoodRecordViewport(
             Text(
                 text = "Esc / 稍后：记录逃避并 20 分钟后再次提醒",
                 fontSize = 11.sp,
-                color = MindBodyColors.OnBackgroundSecondary
-            )
-        } else if (!isEdit) {
-            Text(
-                text = "关联心率标注为「估计关联」，非医疗诊断",
-                fontSize = 12.sp,
                 color = MindBodyColors.OnBackgroundSecondary
             )
         }
@@ -175,44 +343,51 @@ fun MoodSettingsSection(
             Switch(checked = showSettings, onCheckedChange = onShowSettingsChange)
         }
         if (showSettings) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("今日已记录 $todayEntryCount 条", fontSize = 13.sp, color = MindBodyColors.OnBackgroundSecondary)
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsSwitchRow("启用通知", notificationsEnabled, onNotificationsChange)
-            SettingsSwitchRow("强弹窗（全屏记录）", strongPopup, onStrongPopupChange)
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = intervalInput,
-                onValueChange = { onIntervalInputChange(it.filter { c -> c.isDigit() }) },
-                label = { Text("提醒间隔（分钟，1–1440）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Button(onClick = onApplyInterval, modifier = Modifier.padding(top = 8.dp)) {
-                Text("应用间隔")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = quietStartInput,
-                onValueChange = onQuietStartChange,
-                label = { Text("静默开始（HH:mm）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = quietEndInput,
-                onValueChange = onQuietEndChange,
-                label = { Text("静默结束（HH:mm）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Button(onClick = onApplyQuietHours, modifier = Modifier.padding(top = 8.dp)) {
-                Text("应用静默时段")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onTestReminder30s) { Text("测试提醒 30s") }
-                TextButton(onClick = onTestReminder60s) { Text("测试提醒 60s") }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("今日已记录 $todayEntryCount 条", fontSize = 13.sp, color = MindBodyColors.OnBackgroundSecondary)
+                Spacer(modifier = Modifier.height(8.dp))
+                SettingsSwitchRow("启用通知", notificationsEnabled, onNotificationsChange)
+                SettingsSwitchRow("强弹窗（锁屏全屏探查 + 前台 Bottom Sheet）", strongPopup, onStrongPopupChange)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = intervalInput,
+                    onValueChange = { onIntervalInputChange(it.filter { c -> c.isDigit() }) },
+                    label = { Text("提醒间隔（分钟，1–1440）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(onClick = onApplyInterval, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("应用间隔")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = quietStartInput,
+                    onValueChange = onQuietStartChange,
+                    label = { Text("静默开始（HH:mm）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = quietEndInput,
+                    onValueChange = onQuietEndChange,
+                    label = { Text("静默结束（HH:mm）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(onClick = onApplyQuietHours, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("应用静默时段")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onTestReminder30s) { Text("测试提醒 30s") }
+                    TextButton(onClick = onTestReminder60s) { Text("测试提醒 60s") }
+                }
             }
         }
     }

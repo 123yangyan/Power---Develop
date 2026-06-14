@@ -1,16 +1,22 @@
 package com.owner.mindbody
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.owner.mindbody.ui.navigation.AppNavigation
 import com.owner.mindbody.ui.theme.MindBodyTheme
 
 class MainActivity : ComponentActivity() {
+
+    private var navigationTarget by mutableStateOf<String?>(null)
 
     companion object {
         const val EXTRA_NAVIGATE_TO = "navigate_to"
@@ -25,17 +31,17 @@ class MainActivity : ComponentActivity() {
         )
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
-        val initialRoute = intent?.getStringExtra(EXTRA_NAVIGATE_TO)
+        navigationTarget = intent?.getStringExtra(EXTRA_NAVIGATE_TO)
         setContent {
             MindBodyTheme {
-                AppNavigation(initialRoute = initialRoute)
+                AppNavigation(initialRoute = navigationTarget)
             }
         }
     }
 
-    override fun onNewIntent(intent: android.content.Intent) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // 从通知点击进入时重新创建 Activity 即可；若已在栈顶则 onCreate 不重复调用
+        navigationTarget = intent.getStringExtra(EXTRA_NAVIGATE_TO)
     }
 }

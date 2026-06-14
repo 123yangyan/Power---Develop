@@ -20,12 +20,16 @@ import com.owner.mindbody.ui.components.DefaultNavTabs
 import com.owner.mindbody.ui.device.AutoConnectEffect
 import com.owner.mindbody.ui.components.FloatingIslandNav
 import com.owner.mindbody.ui.developer.DeveloperLogScreen
+import com.owner.mindbody.ui.developer.DeveloperStorageScreen
 import com.owner.mindbody.ui.device.DeviceScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
 import com.owner.mindbody.ui.mood.MoodHistoryScreen
 import com.owner.mindbody.ui.mood.MoodRecordScreen
 import com.owner.mindbody.ui.sensors.SensorsScreen
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.ui.platform.LocalDensity
 import com.owner.mindbody.ui.theme.MindBodyColors
 
 sealed class AppRoute(val route: String, val label: String) {
@@ -35,6 +39,7 @@ sealed class AppRoute(val route: String, val label: String) {
     data object Sensors : AppRoute("sensors", "传感器")
     data object Device : AppRoute("device", "设备")
     data object DeveloperLog : AppRoute("developer_log", "运行日志")
+    data object DeveloperStorage : AppRoute("developer_storage", "storage 看板")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
         fun create(deviceId: String) = "ftu/$deviceId"
     }
@@ -54,6 +59,14 @@ fun AppNavigation(initialRoute: String? = null) {
         AppRoute.Device
     )
     val showBottomBar = currentRoute in bottomRoutes.map { it.route }
+
+    val density = LocalDensity.current
+    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val navBottomPadding = when {
+        !showBottomBar -> 0.dp
+        currentRoute == AppRoute.MoodRecord.route && keyboardVisible -> 0.dp
+        else -> 88.dp
+    }
 
     LaunchedEffect(initialRoute) {
         if (initialRoute != null && initialRoute in bottomRoutes.map { it.route }) {
@@ -80,7 +93,7 @@ fun AppNavigation(initialRoute: String? = null) {
             startDestination = AppRoute.HeartRate.route,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (showBottomBar) 88.dp else 0.dp)
+                .padding(bottom = navBottomPadding)
         ) {
             composable(AppRoute.HeartRate.route) {
                 HeartRateScreen()
@@ -101,11 +114,17 @@ fun AppNavigation(initialRoute: String? = null) {
                     },
                     onNavigateToDeveloperLog = {
                         navController.navigate(AppRoute.DeveloperLog.route)
+                    },
+                    onNavigateToDeveloperStorage = {
+                        navController.navigate(AppRoute.DeveloperStorage.route)
                     }
                 )
             }
             composable(AppRoute.DeveloperLog.route) {
                 DeveloperLogScreen(onBack = { navController.popBackStack() })
+            }
+            composable(AppRoute.DeveloperStorage.route) {
+                DeveloperStorageScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoute.Ftu.route) { entry ->
                 val deviceId = entry.arguments?.getString("deviceId") ?: return@composable

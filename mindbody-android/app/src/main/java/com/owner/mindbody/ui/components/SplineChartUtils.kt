@@ -5,20 +5,21 @@ import androidx.compose.ui.graphics.Path
 import com.owner.mindbody.data.local.HrSampleEntity
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
 data class ChartPoint(
-    val minutesOfDay: Int,
+    val timestampMs: Long,
     val bpm: Int
 )
 
 data class ChartTimeWindow(
-    val startMinutes: Int,
-    val endMinutes: Int
+    val startMs: Long,
+    val endMs: Long
 ) {
-    val spanMinutes: Int get() = (endMinutes - startMinutes).coerceAtLeast(1)
+    val spanMs: Long get() = (endMs - startMs).coerceAtLeast(1)
 }
 
 data class BpmRange(
@@ -31,54 +32,53 @@ data class BpmRange(
 object SplineChartUtils {
     const val MIN_BPM = 40f
     const val MAX_BPM = 130f
-    const val MINUTES_PER_DAY = 1440
-    private const val DOWNSAMPLE_BUCKET_MINUTES = 1
-    private const val WINDOW_PADDING_MINUTES = 15
-    private const val FALLBACK_HALF_WINDOW_MINUTES = 30
+    /** 降采样桶：每 10 秒聚合一个点，提升曲线平滑度与实时推进感 */
+    private const val DOWNSAMPLE_BUCKET_SECONDS = 10
+    /** 图表 X 轴固定视窗：最近 1 小时 */
+    const val WINDOW_DURATION_MS = 3_600_000L
+    private const val FALLBACK_HALF_WINDOW_MS = 30 * 60_000L
 
-    fun downsampleByTime(samples: List<HrSampleEntity>, zoneId: ZoneId = ZoneId.systemDefault()): List<ChartPoint> {
+    private val timeLabelFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    fun downsampleByTime(
+        samples: List<HrSampleEntity>,
+        bucketSeconds: Int = DOWNSAMPLE_BUCKET_SECONDS
+    ): List<ChartPoint> {
         if (samples.isEmpty()) return emptyList()
+        val bucketMs = bucketSeconds * 1000L
         return samples
             .groupBy { sample ->
-                val time = Instant.ofEpochMilli(sample.timestamp).atZone(zoneId).toLocalTime()
-                time.hour * 60 + time.minute
+                (sample.timestamp / bucketMs) * bucketMs
             }
-            .map { (minute, bucket) ->
-                val bucketStart = (minute / DOWNSAMPLE_BUCKET_MINUTES) * DOWNSAMPLE_BUCKET_MINUTES
+            .map { (bucketStart, bucket) ->
                 ChartPoint(
-                    minutesOfDay = bucketStart,
+                    timestampMs = bucketStart,
                     bpm = bucket.map { it.bpm }.average().roundToInt()
                 )
             }
-            .sortedBy { it.minutesOfDay }
-            .distinctBy { it.minutesOfDay }
+            .sortedBy { it.timestampMs }
     }
 
-    fun minutesOfDay(timestamp: Long, zoneId: ZoneId = ZoneId.systemDefault()): Int {
-        val time = Instant.ofEpochMilli(timestamp).atZone(zoneId).toLocalTime()
-        return time.hour * 60 + time.minute
-    }
-
+    /**
+     * 固定最近 1 小时视窗：以最新样本（或当前时间）为右边界，向左推 3600 秒。
+     * 仅保留视窗内的点，避免全天 min/max 导致跨度被拉长。
+     */
     fun computeTimeWindow(
         points: List<ChartPoint>,
-        paddingMinutes: Int = WINDOW_PADDING_MINUTES,
-        zoneId: ZoneId = ZoneId.systemDefault()
+        windowDurationMs: Long = WINDOW_DURATION_MS,
+        nowMs: Long = System.currentTimeMillis()
     ): ChartTimeWindow {
-        if (points.isEmpty()) {
-            return fallbackWindow(minutesOfDay(System.currentTimeMillis(), zoneId))
-        }
+        val endMs = points.maxOfOrNull { it.timestampMs } ?: nowMs
+        val startMs = endMs - windowDurationMs
+        return ChartTimeWindow(startMs = startMs, endMs = endMs)
+    }
 
-        val minMinute = points.minOf { it.minutesOfDay }
-        val maxMinute = points.maxOf { it.minutesOfDay }
-
-        if (points.size == 1 || minMinute == maxMinute) {
-            return fallbackWindow(minMinute)
-        }
-
-        return ChartTimeWindow(
-            startMinutes = (minMinute - paddingMinutes).coerceAtLeast(0),
-            endMinutes = (maxMinute + paddingMinutes).coerceAtMost(MINUTES_PER_DAY)
-        )
+    /** 过滤出落在视窗内的数据点 */
+    fun filterPointsInWindow(
+        points: List<ChartPoint>,
+        window: ChartTimeWindow
+    ): List<ChartPoint> {
+        return points.filter { it.timestampMs in window.startMs..window.endMs }
     }
 
     fun computeBpmRange(points: List<ChartPoint>, restingBpm: Int): BpmRange {
@@ -111,18 +111,23 @@ object SplineChartUtils {
         return topPadding + usable * (1f - normalized)
     }
 
-    fun minutesToX(minutes: Int, width: Float, window: ChartTimeWindow): Float {
-        val relative = (minutes - window.startMinutes).toFloat() / window.spanMinutes
+    fun timestampToX(timestampMs: Long, width: Float, window: ChartTimeWindow): Float {
+        val relative = (timestampMs - window.startMs).toFloat() / window.spanMs
         return relative.coerceIn(0f, 1f) * width
     }
 
-    fun formatTimeLabels(window: ChartTimeWindow, count: Int = 5): List<String> {
+    /** 1 小时视窗：5 个刻度，约每 15 分钟一个标签 */
+    fun formatTimeLabels(
+        window: ChartTimeWindow,
+        count: Int = 5,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): List<String> {
         if (count <= 1) {
-            return listOf(formatMinute(window.startMinutes))
+            return listOf(formatTimestamp(window.startMs, zoneId))
         }
         return (0 until count).map { index ->
-            val minute = window.startMinutes + (window.spanMinutes * index / (count - 1))
-            formatMinute(minute)
+            val timestampMs = window.startMs + (window.spanMs * index / (count - 1))
+            formatTimestamp(timestampMs, zoneId)
         }
     }
 
@@ -159,17 +164,15 @@ object SplineChartUtils {
         return path
     }
 
-    private fun fallbackWindow(centerMinute: Int): ChartTimeWindow {
+    fun fallbackWindow(centerMs: Long): ChartTimeWindow {
         return ChartTimeWindow(
-            startMinutes = (centerMinute - FALLBACK_HALF_WINDOW_MINUTES).coerceAtLeast(0),
-            endMinutes = (centerMinute + FALLBACK_HALF_WINDOW_MINUTES).coerceAtMost(MINUTES_PER_DAY)
+            startMs = centerMs - FALLBACK_HALF_WINDOW_MS,
+            endMs = centerMs + FALLBACK_HALF_WINDOW_MS
         )
     }
 
-    private fun formatMinute(minutes: Int): String {
-        val clamped = minutes.coerceIn(0, MINUTES_PER_DAY)
-        val hour = clamped / 60
-        val minute = clamped % 60
-        return "%02d:%02d".format(hour, minute)
+    private fun formatTimestamp(timestampMs: Long, zoneId: ZoneId): String {
+        val time = Instant.ofEpochMilli(timestampMs).atZone(zoneId).toLocalTime()
+        return time.format(timeLabelFormatter)
     }
 }
