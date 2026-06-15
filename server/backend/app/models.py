@@ -31,5 +31,6 @@ class AudioFile(Base):
   risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
   message: Mapped[str | None] = mapped_column(Text, nullable=True)
   error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+  processing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
   processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
   created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

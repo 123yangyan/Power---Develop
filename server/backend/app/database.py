@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_settings
@@ -20,6 +20,13 @@ def init_db() -> None:
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+
+    # 兼容已有数据库：添加 processing_at 列（SQLite 不支持 IF NOT EXISTS）
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE audio_files ADD COLUMN processing_at DATETIME"))
+        except Exception:
+            pass
 
 
 def get_db():

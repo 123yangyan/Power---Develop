@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 import redis
@@ -17,7 +19,10 @@ from app.schemas import (
     AudioResultDto,
     BatchResultRequest,
     BatchResultResponseData,
+    SubmitResultData,
+    SubmitResultRequest,
     UploadResponseData,
+    WorkerNextJobData,
     error,
     success,
     to_audio_result,
@@ -113,3 +118,106 @@ def batch_result(request: BatchResultRequest, db: Session = Depends(get_db)):
         if record is not None:
             results.append(to_audio_result(record))
     return success(BatchResultResponseData(results=results))
+
+
+# ---------- 本地 Worker 接口 ----------
+
+@app.get(
+    "/api/worker/next-job",
+    response_model=ApiResponse[WorkerNextJobData | None],
+    dependencies=[Depends(verify_api_key)],
+)
+def get_next_job(db: Session = Depends(get_db)):
+    """
+    返回最早的一条待处理任务（status=pending），附带 OSS 签名下载 URL。
+    若没有待处理任务则返回 data=null。
+    Worker 轮询间隔建议 5 秒。
+    """
+    from app.oss_client import generate_signed_url
+
+    settings = get_settings()
+
+    # --- 陈腐任务回收：超过 2 分钟还卡在 processing 的自动退回 pending ---
+    STALE_MINUTES = 2
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=STALE_MINUTES)
+    recovered = (
+        db.query(AudioFile)
+        .filter(
+            AudioFile.status == "processing",
+            AudioFile.processing_at.isnot(None),
+            AudioFile.processing_at < stale_cutoff,
+        )
+        .update(
+            {"status": "pending", "processing_at": None},
+            synchronize_session=False,
+        )
+    )
+    if recovered:
+        db.commit()
+        logger.info("Recovered %d stale processing job(s)", recovered)
+
+    # --- 查找待处理任务 ---
+    record = (
+        db.query(AudioFile)
+        .filter(AudioFile.status == "pending")
+        .order_by(AudioFile.created_at.asc())
+        .first()
+    )
+
+    if record is None:
+        return success(None)
+
+    # 标记为 processing，防止其他 Worker 重复领取
+    record.status = "processing"
+    record.processing_at = datetime.now(timezone.utc)
+    db.commit()
+
+    signed_url = generate_signed_url(
+        record.oss_key, settings.signed_url_expires_seconds
+    )
+
+    return success(
+        WorkerNextJobData(
+            fileId=record.file_id,
+            fileName=record.file_name,
+            signedUrl=signed_url,
+        )
+    )
+
+
+@app.post(
+    "/api/worker/submit-result",
+    response_model=ApiResponse[SubmitResultData],
+    dependencies=[Depends(verify_api_key)],
+)
+def submit_result(request: SubmitResultRequest, db: Session = Depends(get_db)):
+    """
+    接收本地 Worker 的 ASR 转写 + LLM 分析结果，回写到数据库。
+    """
+    record = db.get(AudioFile, request.fileId)
+    if record is None:
+        return error(404, "file not found")
+
+    if request.transcript:
+        record.transcript = request.transcript
+        record.title = request.title or "录音笔记"
+        record.summary = request.summary
+        record.keywords_json = json.dumps(request.keywords, ensure_ascii=False)
+        record.alert_flag = request.alertFlag
+        record.risk_level = request.riskLevel
+        record.message = request.message or None
+        record.status = "completed"
+        record.processed_at = datetime.now(timezone.utc)
+        record.processing_at = None
+        record.error_message = None
+    else:
+        # 空转写内容 → 标记失败
+        record.status = "failed"
+        record.processing_at = None
+        record.error_message = request.message or "转写结果为空"
+
+    db.commit()
+
+    return success(
+        SubmitResultData(fileId=request.fileId, status=record.status)
+    )
