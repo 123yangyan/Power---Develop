@@ -40,7 +40,10 @@ object MoodReminderDeliver {
             val intervalMs = moodPrefs.getEffectiveIntervalMs()
             val lastAt = moodPrefs.getLastReminderAtSync()
             val now = System.currentTimeMillis()
-            if (lastAt > 0 && now - lastAt < intervalMs) return
+            if (lastAt > 0 && now - lastAt < intervalMs) {
+                MoodReminderScheduler.scheduleNextExact(context, lastAt + intervalMs - now)
+                return
+            }
         }
 
         val useStrongPopup = moodPrefs.isStrongPopupSync() || force
@@ -52,11 +55,15 @@ object MoodReminderDeliver {
                 softDismiss = AppForegroundHelper.canSoftDismissProbe(context)
             )
             if (delivered) {
-                moodPrefs.setLastReminderAt(System.currentTimeMillis())
+                val deliveredAt = System.currentTimeMillis()
+                moodPrefs.setLastReminderAt(deliveredAt)
+                MoodReminderScheduler.scheduleNextExact(context, moodPrefs.getEffectiveIntervalMs())
             }
         } else if (moodPrefs.isNotificationsEnabledSync()) {
             if (showWeakNotification(context)) {
-                moodPrefs.setLastReminderAt(System.currentTimeMillis())
+                val deliveredAt = System.currentTimeMillis()
+                moodPrefs.setLastReminderAt(deliveredAt)
+                MoodReminderScheduler.scheduleNextExact(context, moodPrefs.getEffectiveIntervalMs())
             }
         }
     }

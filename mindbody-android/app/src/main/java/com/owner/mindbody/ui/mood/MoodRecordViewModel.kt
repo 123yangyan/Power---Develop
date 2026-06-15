@@ -158,6 +158,7 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
                     roleId = _selectedRoleId.value
                 )
                 moodPreferences.setLastReminderAt(System.currentTimeMillis())
+                scheduleNextReminderFromPreferences()
                 _saveSuccess.value = true
                 resetFormAfterSave()
                 onSaved()
@@ -211,6 +212,7 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 moodPreferences.incrementSnoozeCount(moodPreferences.todayDateKey())
                 moodPreferences.setLastReminderAt(System.currentTimeMillis())
+                scheduleNextReminderFromPreferences()
             } catch (_: Exception) {
                 // 逃避记录失败不阻断关闭
             }
@@ -232,6 +234,7 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             moodPreferences.setReminderIntervalMinutes(minutes)
             MoodReminderScheduler.schedule(getApplication())
+            scheduleNextReminderFromPreferences()
         }
     }
 
@@ -258,6 +261,18 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
         if (mode != ConnectionMode.ON_DEMAND) return null
         val deviceId = devicePreferences.savedDeviceId.first() ?: return null
         return polarBleManager.connectForSnapshot(deviceId)
+    }
+
+    private suspend fun scheduleNextReminderFromPreferences() {
+        val intervalMs = moodPreferences.getEffectiveIntervalMs()
+        val lastAt = moodPreferences.getLastReminderAtSync()
+        val now = System.currentTimeMillis()
+        val delayMs = if (lastAt > 0) {
+            lastAt + intervalMs - now
+        } else {
+            intervalMs
+        }
+        MoodReminderScheduler.scheduleNextExact(getApplication(), delayMs)
     }
 
     fun formatEntryTime(timestamp: Long): String {

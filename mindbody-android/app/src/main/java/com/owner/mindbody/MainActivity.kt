@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_NAVIGATE_TO = "navigate_to"
+        const val ROUTE_HEART_RATE = "heart_rate"
         const val ROUTE_MOOD_RECORD = "mood_record"
     }
 

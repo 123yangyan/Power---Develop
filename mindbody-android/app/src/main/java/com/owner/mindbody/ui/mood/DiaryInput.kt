@@ -55,13 +55,13 @@ fun DiaryInput(
     onFocusChanged: ((Boolean) -> Unit)? = null
 ) {
     val shape = RoundedCornerShape(16.dp)
-    var textFieldValue by remember(value) {
+    var textFieldValue by remember {
         mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length)))
     }
 
     LaunchedEffect(value) {
         if (textFieldValue.text != value) {
-            textFieldValue = textFieldValue.copy(text = value)
+            textFieldValue = TextFieldValue(text = value, selection = TextRange(value.length))
         }
     }
 

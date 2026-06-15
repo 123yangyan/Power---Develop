@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.owner.mindbody.ui.theme.MindBodyColors
@@ -18,7 +19,8 @@ fun RoleMiniBadge(
     roleId: String?,
     coordX: Int,
     coordY: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 40.dp
 ) {
     val role = EmotionRoles.findById(roleId)
     if (role != null) {
@@ -28,7 +30,7 @@ fun RoleMiniBadge(
         ) {
             EmotionRoleIcon(
                 role = role,
-                size = 40.dp,
+                size = iconSize,
                 selected = false,
                 idleAnimation = false
             )

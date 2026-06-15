@@ -3,6 +3,7 @@ package com.owner.mindbody.data
 import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.local.PpiSampleEntity
 import com.polar.sdk.api.model.PolarPpiData
+import kotlinx.coroutines.flow.Flow
 
 class PpiRepository(private val database: AppDatabase) {
 
@@ -25,6 +26,10 @@ class PpiRepository(private val database: AppDatabase) {
                 skinContactStatus = sample.skinContactStatus
             )
         )
+    }
+
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<PpiSampleEntity>> {
+        return dao.observeBetween(startMs, endMs)
     }
 
     suspend fun flush() {

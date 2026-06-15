@@ -3,12 +3,14 @@ package com.owner.mindbody.polar
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.owner.mindbody.MainActivity
 import com.owner.mindbody.R
 
 /**
@@ -60,11 +62,22 @@ class HrStreamService : Service() {
     }
 
     private fun buildNotification(): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_NAVIGATE_TO, MainActivity.ROUTE_HEART_RATE)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.hr_notification_title))
             .setContentText(getString(R.string.hr_notification_text))
             .setSmallIcon(R.drawable.ic_launcher)
             .setOngoing(true)
+            .setContentIntent(pending)
             .build()
     }
 }

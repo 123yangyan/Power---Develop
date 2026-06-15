@@ -54,7 +54,7 @@ class HrRepository(private val database: AppDatabase) {
         )
     }
 
-    suspend fun getHrNearTimestamp(timestamp: Long, windowMs: Long = 5 * 60 * 1000L): Int? {
+    suspend fun getHrNearTimestamp(timestamp: Long, windowMs: Long = 2 * 60 * 1000L): Int? {
         flush()
         val samples = dao.getBetween(timestamp - windowMs, timestamp + windowMs)
         if (samples.isEmpty()) return null

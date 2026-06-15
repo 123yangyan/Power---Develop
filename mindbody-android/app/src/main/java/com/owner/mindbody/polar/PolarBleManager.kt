@@ -69,7 +69,6 @@ class PolarBleManager(
     companion object {
         private const val TAG = "PolarBleManager"
         private const val RECONNECT_DELAY_MS = 3_000L
-        private const val SNAPSHOT_SAMPLE_DURATION_MS = 5_000L
         private const val SNAPSHOT_TIMEOUT_MS = 30_000L
         private const val AUTO_CONNECT_SCAN_TIMEOUT_MS = 15_000L
     }
@@ -297,7 +296,7 @@ class PolarBleManager(
     }
 
     /**
-     * 短连接模式：连接设备，采集约 5 秒心率样本后断开，返回平均 BPM。
+     * 短连接模式：连接设备，拿到第一条有效心率后断开，减少记录时刻偏差。
      * Phase 2 记录心情时关联 HR 快照使用。
      */
     suspend fun connectForSnapshot(deviceId: String): Int? {
@@ -314,8 +313,7 @@ class PolarBleManager(
                     delay(1_000)
                 }
 
-                val samples = collectHrSamples(SNAPSHOT_SAMPLE_DURATION_MS)
-                val average = samples.takeIf { it.isNotEmpty() }?.average()?.toInt()
+                val snapshot = currentHr.first { it != null && it > 0 }
 
                 userInitiatedDisconnect = true
                 val connectedId = _connectedDeviceId.value
@@ -324,7 +322,7 @@ class PolarBleManager(
                     api.disconnectFromDevice(connectedId)
                 }
 
-                average
+                snapshot
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Snapshot failed", e)
@@ -398,16 +396,6 @@ class PolarBleManager(
             sleepGoalMinutes = 8 * 60,
             deviceTime = LocalDateTime.now().atOffset(ZoneOffset.UTC).withNano(0).toString()
         )
-    }
-
-    private suspend fun collectHrSamples(durationMs: Long): List<Int> {
-        val samples = mutableListOf<Int>()
-        val deadline = System.currentTimeMillis() + durationMs
-        while (System.currentTimeMillis() < deadline) {
-            _currentHr.value?.takeIf { it > 0 }?.let { samples.add(it) }
-            delay(500)
-        }
-        return samples
     }
 
     private fun scheduleReconnect(deviceId: String) {

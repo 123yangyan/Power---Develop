@@ -54,8 +54,8 @@ fun HeartRateScreen(
     val currentHr by viewModel.currentHr.collectAsState()
     val currentSkinTemp by viewModel.currentSkinTemp.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
-    val samples by viewModel.todaySamples.collectAsState()
     val stats by viewModel.todayStats.collectAsState()
+    val chartState by viewModel.chartState.collectAsState()
 
     DisposableEffect(Unit) {
         viewModel.startBackgroundStream()
@@ -115,7 +115,11 @@ fun HeartRateScreen(
         }
 
         PremiumCard(cornerRadius = 32.dp) {
-            MindBodySplineChart(samples = samples)
+            MindBodySplineChart(
+                state = chartState,
+                onPresetSelected = viewModel::setChartPreset,
+                onWindowPan = viewModel::panChartWindow
+            )
         }
     }
 }

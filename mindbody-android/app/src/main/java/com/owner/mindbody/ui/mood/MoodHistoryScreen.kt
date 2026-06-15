@@ -27,11 +27,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -281,6 +284,7 @@ private fun HistoryEntryCard(
         view.isAvoidance -> Color(0xFFF59E0B).copy(alpha = 0.4f)
         else -> MindBodyColors.CardBorder
     }
+    var diaryExpanded by rememberSaveable(view.id) { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -328,20 +332,44 @@ private fun HistoryEntryCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         val diaryText = if (view.diaryBody.isBlank()) "（无日记）" else view.diaryBody
-                        Text(diaryText, fontSize = 14.sp, lineHeight = 20.sp)
+                        val canExpand = diaryText.length > 80 || diaryText.count { it == '\n' } >= 3
+                        Text(
+                            text = diaryText,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            maxLines = if (diaryExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (canExpand) {
+                            Text(
+                                text = if (diaryExpanded) "收起" else "展开",
+                                fontSize = 12.sp,
+                                color = MindBodyColors.PrimaryIndigo,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable { diaryExpanded = !diaryExpanded }
+                            )
+                        }
                         view.hrLabel?.let {
                             Text(
-                                it,
+                                text = "心率 · $it",
                                 fontSize = 12.sp,
-                                color = MindBodyColors.OnBackgroundSecondary,
-                                modifier = Modifier.padding(top = 4.dp)
+                                color = MindBodyColors.HeartRed,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(MindBodyColors.HeartRedGlow)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
                     RoleMiniBadge(
                         roleId = view.roleId,
                         coordX = view.coordX,
-                        coordY = view.coordY
+                        coordY = view.coordY,
+                        iconSize = 48.dp
                     )
                 }
                 Row(

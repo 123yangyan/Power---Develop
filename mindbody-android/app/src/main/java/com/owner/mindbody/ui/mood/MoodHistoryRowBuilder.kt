@@ -24,7 +24,7 @@ data class MoodHistoryRowView(
 )
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val dateLabelFormatter = DateTimeFormatter.ofPattern("M月d日 EEEE")
+private val dateLabelFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE")
 
 fun buildHistoryRowView(
     entry: MoodEntryEntity,

@@ -6,11 +6,11 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品说明：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-14
+**最后更新**：2026-06-15
 
 ---
 
-## 索引（已实现 30 条）
+## 索引（已实现 31 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -31,6 +31,7 @@
 | F-P1-009 | 在线传感器流全量落库 | stream-entities |
 | F-P1-010 | 设备离线数据同步落库 | sync-device-manager |
 | F-P1-011 | 开发者模式与运行日志 | phase1-android-polar |
+| F-P1-012 | 身心交织多指标曲线 | mindbody-chart-overlay |
 | F-P2-001 | mood_entries 实体与 Repository | mood-entity |
 | F-P2-002 | ValueEnergyGrid 四象限点选 | value-energy-grid |
 | F-P2-003 | DiaryInput 日记输入 | diary-input |
@@ -402,6 +403,28 @@
 
 ---
 
+### F-P1-012 身心交织多指标曲线
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 身心交织曲线多指标整合 / todo: mindbody-chart-overlay |
+| 最后更新 | 2026-06-15 |
+
+#### 已实现方案
+
+- **目的**：心率页从单一 HR 曲线升级为可交互的多指标时间轴，用同图叠加方式观察心率、皮肤体温、HRV 与运动上下文。
+- **入口**：底部导航「心率」→ `HeartRateScreen` → `MindBodySplineChart`
+- **关键文件**：`ui/components/MindBodySplineChart.kt`、`ui/components/SplineChartUtils.kt`、`ui/heartrate/HeartRateViewModel.kt`、`data/HrvUtils.kt`；范围读取经 `data/*Repository.kt` 与对应 DAO 暴露。
+- **调用约定**：功能层只通过 `MindBodyApplication.storage` 的 Repository 读取；图表默认今日范围，支持 1h/6h/24h 预设、左右拖动平移、触摸竖线 scrubber；HRV 由 PPI/RR 间期客户端在 `Dispatchers.Default` 计算 RMSSD，仅作觉察指标。
+- **验收要点**：心率页可见 HR/体温/HRV 三色曲线与运动色带；chips 可切换显隐；触摸/拖动显示时间点与数值；无某类传感器数据时优雅缺省；大量 PPI 数据下滑动图表不阻塞主线程。
+
+#### 变更记录
+
+- 2026-06-15：多指标叠加曲线 + RMSSD + 今日历史滑动 + scrubber (#mindbody-chart-overlay)
+- 2026-06-15：RMSSD 计算移至后台线程并改为线性滑窗，修复心率页 ANR (#fix-hr-anr)
+
+---
+
 ## P2 — 心情记录
 
 ### F-P2-001 mood_entries 实体与 Repository
@@ -452,19 +475,20 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: diary-input |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-15 |
 
 #### 已实现方案
 
 - **目的**：多行日记输入 + v3.7 Enter 列表续号。
 - **关键文件**：`ui/mood/DiaryInput.kt`、`DiaryListContinue.kt`
-- **验收要点**：有序/无序列表 Enter 续号；MODAL 等场景 scrollable + heightIn；场景 B 用 fillHeight 占满父 Box 内部滚动。
+- **验收要点**：有序/无序列表 Enter 续号；MODAL 等场景 scrollable + heightIn；场景 B 用 fillHeight 占满父 Box 内部滚动；中文输入法连续输入不重复提交文字。
 
 #### 变更记录
 
 - 2026-06-13：DiaryInput 组件 (#diary-input)
 - 2026-06-13：v3.7 列表续号 (#wave-a-diary-continue)
 - 2026-06-14：场景 B fillHeight 模式，避免 verticalScroll 与 weight 冲突 (#keyboard-crash-fix)
+- 2026-06-15：稳定 TextFieldValue 本地状态，修复 IME 重复输入 (#fix-diary-input)
 
 ---
 
@@ -496,18 +520,19 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: hr-snapshot |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-15 |
 
 #### 已实现方案
 
 - **目的**：记录时刻关联本地 HR 估计值。
 - **关键文件**：`MoodRecordViewModel.resolveHrSnapshot()`；复用 `HrRepository.getHrNearTimestamp`、`PolarBleManager.connectForSnapshot`
-- **调用约定**：常连接先查 ±5min 均值；短连接无样本时 `connectForSnapshot`；无手环时 `hr_at_entry` 为 null。
+- **调用约定**：常连接先查 ±2min 均值；短连接无样本时 `connectForSnapshot` 取第一条有效 HR；无手环时 `hr_at_entry` 为 null。
 - **验收要点**：历史页展示「估计关联」标注；非医疗诊断文案存在。
 
 #### 变更记录
 
 - 2026-06-13：HR 快照逻辑 (#hr-snapshot)
+- 2026-06-15：缩小本地窗口并减少短连接快照滞后 (#fix-hr-snapshot)
 
 ---
 
@@ -516,13 +541,13 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: reminder |
-| 最后更新 | 2026-06-14 |
+| 最后更新 | 2026-06-15 |
 
 #### 已实现方案
 
 - **目的**：替代 emotion daily-checkin-service，定时提醒记录。
 - **关键文件**：`worker/MoodReminderWorker.kt`、`MoodReminderDeliver.kt`、`MoodReminderScheduler.kt`；`MoodCheckInActivity.kt`；`data/MoodPreferences.kt`
-- **调用约定**：间隔 1–1440 分钟；静默可编辑；**strongPopup 一律经 FullScreenIntent 通知投递**（禁止 Worker 内 `startActivity`，targetSdk 35 BAL 合规）；`EXTRA_SOFT_DISMISS` 经 PendingIntent 传递；未开通知则不 post；Esc/稍后写逃避记录 + 20min snooze。
+- **调用约定**：间隔 1–1440 分钟；静默可编辑；周期 Work 保留为兜底，`mood_reminder_exact` 一次性 Work 按上次提醒 + 有效间隔精确重排；**strongPopup 一律经 FullScreenIntent 通知投递**（禁止 Worker 内 `startActivity`，targetSdk 35 BAL 合规）；`EXTRA_SOFT_DISMISS` 经 PendingIntent 传递；未开通知则不 post；Esc/稍后写逃避记录 + 20min snooze。
 - **验收要点**：后台/测试提醒无 `Background activity launch blocked` logcat；锁屏 FullScreenIntent 亮屏；设备页可提示开启全屏通知权限。
 
 #### 变更记录
@@ -532,6 +557,7 @@
 - 2026-06-14：恢复 FullScreenIntent + 锁屏探查 + 通知栏「稍后」快捷操作 (#lockscreen-probe)
 - 2026-06-14：探查 UX 修复 — 前台 soft dismiss 分流、设置区/写作区布局分离 (#probe-ux-fix)
 - 2026-06-14：BAL 修复 — 移除 Worker 直接 launch，统一通知通道 + FSI 能力检测 (#bal-fix)
+- 2026-06-15：新增一次性精确重排，减少 15min 轮询漂移 (#fix-reminder-timing)
 
 ---
 
@@ -540,19 +566,20 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2心情记录移植 / todo: history-screen |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-15 |
 
 #### 已实现方案
 
 - **目的**：列表、预览、编辑、删除。
 - **入口**：底部导航「历史」→ `MoodHistoryScreen`
 - **关键文件**：`MoodHistoryScreen.kt`、`MoodHistoryRowBuilder.kt`、`CoordMiniBadge.kt`、`DailyEntryIndex.kt`
-- **调用约定**：极性/逃避卡片样式；CoordMiniBadge；页码按钮 + 跳转；同日 `(i/total)`。
+- **调用约定**：极性/逃避卡片样式；CoordMiniBadge/RoleMiniBadge；页码按钮 + 跳转；同日 `(i/total)`；日期头含年份；长日记默认 3 行并可展开。
 - **验收要点**：保存后在历史可见；编辑/删除生效。
 
 #### 变更记录
 
 - 2026-06-13：历史页 (#history-screen)
+- 2026-06-15：历史卡片信息层级优化，心率高亮、长文展开、日期加年份 (#optimize-history-ui)
 
 ---
 
@@ -645,17 +672,18 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | phase2 对齐 emotion v3.7 / todo: wave-c-history-polish |
-| 最后更新 | 2026-06-14 |
+| 最后更新 | 2026-06-15 |
 
 #### 已实现方案
 
 - **目的**：历史列表视觉与分页对齐 emotion v3.7；支持角色图标展示。
 - **关键文件**：`RoleMiniBadge.kt`、`CoordMiniBadge.kt`、`MoodHistoryRowBuilder.kt`；`MoodHistoryScreen` pager
-- **验收要点**：有 roleId 显示角色微缩图；无 roleId 回退象限 badge；极性着色、逃避 badge、页码跳转。
+- **验收要点**：有 roleId 显示角色微缩图；无 roleId 回退象限 badge；极性着色、逃避 badge、页码跳转；历史卡片中角色图标更突出。
 
 #### 变更记录
 
 - 2026-06-13：历史 polish (#wave-c-history-polish)
+- 2026-06-15：RoleMiniBadge 支持可配置图标尺寸 (#optimize-history-ui)
 
 ---
 

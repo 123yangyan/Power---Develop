@@ -32,6 +32,7 @@ class MoodReminderSnoozeReceiver : BroadcastReceiver() {
                 )
                 moodPrefs.incrementSnoozeCount(moodPrefs.todayDateKey())
                 moodPrefs.setLastReminderAt(System.currentTimeMillis())
+                MoodReminderScheduler.scheduleNextExact(context, moodPrefs.getEffectiveIntervalMs())
                 NotificationManagerCompat.from(context).cancel(MoodReminderWorker.NOTIFICATION_ID)
             } finally {
                 pendingResult.finish()

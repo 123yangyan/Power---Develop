@@ -2,6 +2,8 @@ package com.owner.mindbody.data
 
 import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.local.SkinTempSampleEntity
+import kotlinx.coroutines.flow.Flow
+
 class SkinTempRepository(private val database: AppDatabase) {
 
     private val dao = database.skinTempSampleDao()
@@ -15,6 +17,10 @@ class SkinTempRepository(private val database: AppDatabase) {
         buffer.enqueue(
             SkinTempSampleEntity(timestamp = timestamp, temperatureC = temperatureC)
         )
+    }
+
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<SkinTempSampleEntity>> {
+        return dao.observeBetween(startMs, endMs)
     }
 
     suspend fun flush() {

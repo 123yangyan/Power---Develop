@@ -15,7 +15,7 @@
 打造一款 **「身心状态一体化」** 的个人健康觉察工具：
 
 1. **实时看见身体信号** —— 连接 Polar Loop 后，持续或按需获取心率数据
-2. **快速记录心理状态** —— 1～2 分钟完成「价值感 × 耗能」坐标点选 + 短日记
+2. **快速记录心理状态** —— 0.5 秒情绪角色指认（可选短日记），坐标后台静默写入
 3. **获得每日 AI 指导** —— 每晚/次日凌晨自动生成「今日身心画像 + 明日建议」
 4. **历史越用越准** —— AI 结合近 7 日融合结果，输出跨日连续、非重复套话的个性化指导
 
@@ -34,7 +34,7 @@
 
 - **想觉察身心关联的人**：例如高耗能、低价值感时心率是否偏高
 - **已有 Polar Loop 的用户**：把手环从「只看运动数据」扩展为「日常身心记录」
-- **习惯写简短日记的用户**：emotion 式坐标 + 日记，比纯文字更高效
+- **习惯写简短日记的用户**：角色化点选 + 可选日记，比纯文字更高效
 - **希望有反馈而非只记录的用户**：每日 AI 指导提供可执行的下一步建议
 
 ---
@@ -44,11 +44,11 @@
 | 页签 | 功能 | 状态 |
 |------|------|------|
 | **仪表** | 心情指数、心率摘要、成长阶段、今日主指导 | Phase 4 规划 |
-| **心率** | 实时 BPM、当日曲线、连接状态 | Phase 1 已实现 |
-| **记录** | 价值感×耗能网格 + 日记输入（v3.7 续号/序号） | Phase 2 已实现 |
-| **历史** | 日记列表 + CoordMiniBadge + 关联 HR | Phase 2 已实现 |
+| **心率** | 实时 BPM、多指标身心交织曲线、连接状态 | Phase 1 已实现 |
+| **记录** | 情绪角色化记录（场景 A 2×2 舞台 / 场景 B 键盘沉浸 + 日记续号/序号） | Phase 2 已实现 |
+| **历史** | 日记列表 + 角色微缩图（或象限 badge 回退）+ 关联 HR | Phase 2 已实现 |
 | **指导** | 每日 AI 洞察（风险、模式、建议） | Phase 3 规划 |
-| **设备** | Loop 连接、FTU、配对引导、连接模式切换 | Phase 1 已实现 |
+| **设备** | Loop 连接、FTU、配对引导、连接模式切换、**心情提醒设置** | Phase 1–2 已实现 |
 
 ---
 
@@ -60,13 +60,13 @@
 - **FTU 首次使用配置**向导（性别、身高、体重、静息心率等）
 - 设备页配对提示（距离、单设备绑定、恢复出厂等）
 - 已配对设备 ID 与 FTU 状态持久化（DataStore）
-- **开发者模式**：设备页底部连点版本信息 7 次解锁，可进入「运行日志」页查看/复制 App 内 BLE 与同步日志（环形缓冲 800 条）
+- **开发者模式**：设备页底部连点版本信息 7 次解锁，可进入「运行日志」页查看/复制 App 内 BLE 与同步日志（环形缓冲 800 条），以及「storage 看板」查看各表行数
 
 ### 心率采集与展示
 
 - 连接成功后 **实时心率流**（`startHrStreaming`）
 - 心率页展示：当前 BPM、连接状态、今日统计（样本数/平均/最低/最高）
-- 今日趋势简易折线图（最近 120 个样本，显示层按分钟降采样，不影响存储完整性）
+- **身心交织曲线**：同一时间轴叠加心率、皮肤体温、HRV（PPI/RR 计算 RMSSD）与运动上下文；支持 1h/6h/24h 视窗、左右滑动查看今日历史、触摸竖线查看具体时间点数值
 - **Room 本地存储** `hr_samples`（timestamp、bpm、rr_ms、`SyncMeta`），**全量永久保存**（已去掉 24h 自动删除）
 - **批量缓冲写入**（`HrSampleBuffer`）：高频样本先入内存缓冲，达阈值或定时 flush，App 退出/断连时强制落盘
 - **统一存储门面** `AppStorage`：功能层经 `app.storage.hr` 读写，不直接访问 Database/Repository
@@ -110,19 +110,38 @@ flowchart LR
 
 **验收：** 真机 Polar Loop 稳定显示心率；常连接模式下断线可自动重连。
 
-### Phase 2 — 心情记录移植（已完成，对齐 emotion v3.7）
+### Phase 2 — 心情记录移植（已完成，v4 情绪角色化 UI）
 
-**前置：** P0 存储核心已完成。**子 Plan：** [phase2心情记录移植](../.cursor/plans/phase2心情记录移植.plan.md)（真相源：emotion v3.7.0）
+**前置：** P0 存储核心已完成。**子 Plan：** [phase2心情记录移植](../.cursor/plans/phase2心情记录移植.plan.md)。交互设计详见 [PRODUCT_EMOTION_DESIGN.md](./PRODUCT_EMOTION_DESIGN.md)。
 
 **已实现：**
 
-- 「价值感 × 耗能」四象限 + `MoodRecordViewport` 记录页（今日序号、上次记录时间）
-- 日记 Enter 列表续号（v3.7）；记录页提醒设置（间隔/静默/通知/强弹窗/测试提醒）
-- WorkManager 提醒 + `MoodCheckInActivity` 强弹窗；Esc/稍后 → 逃避记录 + 20 分钟 snooze
-- 历史：`CoordMiniBadge`、极性/逃避样式、分页跳转、同日 `(i/total)`
-- 记录时刻 **HR 快照**（MindBody 扩展）；数据经 `app.storage.mood` 读写
+#### 主动记录页（底部导航「记录」）
 
-**验收：** 行为对齐 emotion v3.7 记录/历史/提醒 UX；HR 快照保留。
+采用 **场景 A / 场景 B 二分法**（`MoodRecordViewport`）：
+
+| 场景 | 触发 | 交互 |
+|------|------|------|
+| **场景 A** | 默认进入 | 2×2 **ActorStage** 四角色（心流 / 内耗 / 麻木 / 焦焦）；无日记时点角色 **一键保存**；可展开全部 18 人；引导卡片进入写作 |
+| **场景 B** | 点日记引导 / 键盘弹起 | 日记占主视野 + **胶囊栏 4+➕** + 句尾微型角色标签；键盘可见时隐藏免责声明 |
+
+- 日记 Enter **列表续号**（对齐 emotion v3.7）；今日序号、上次记录时间
+- 价值感×耗能 **坐标仍后台写入**（`coordX`/`coordY`），前台不再展示四象限网格
+- **提醒设置** 迁至 **设备页**（间隔 / 静默 / 通知 / 强弹窗 / 测试提醒）
+
+#### 定时探查（WorkManager 提醒）
+
+- 强弹窗经 **FullScreenIntent 通知** 拉起 `MoodCheckInActivity`（Worker 禁止后台直接 `startActivity`，targetSdk 35 BAL 合规）
+- **MobileCheckInDrawer**：皮克斯 **9 人 3×3** + 展开 9 人；锁屏穿透 + Keyguard 引导
+- 弱通知点击 → 记录页；Esc / 稍后 / 通知栏快捷操作 → 逃避记录 + 20 分钟 snooze
+- 设备页提示开启 **全屏通知权限**（API 34+ 未授权时降级为 Heads-up）
+
+#### 历史与其他
+
+- 历史：有 `roleId` 显示 **角色微缩图**，无 `roleId` 回退 `CoordMiniBadge`；极性/逃避样式、分页跳转、同日 `(i/total)`
+- 记录时刻 **HR 快照**（MindBody 扩展）；`mood_entries` 含 `roleId`（Room v6）；数据经 `app.storage.mood` 读写
+
+**验收：** 记录页场景 A/B 流畅切换、键盘弹起不闪退；探查无 BAL 拦截；HR 快照与历史展示正常。
 
 ### Phase 3 — 云端同步 + 融合 Pipeline
 
@@ -154,7 +173,8 @@ flowchart LR
 ### 客户端数据
 
 - **`hr_samples`**：高频心率（本地全量永久保存 + 批量缓冲写入；上传时按分钟聚合，原始 1Hz 保留本地）
-- **`mood_entries`**：心情记录（坐标、日记、发生时间）
+- **`skin_temp_samples` / `ppi_samples` / `activity_minute_samples` / `training_sessions`**：本地多传感器时间轴数据，用于心率页交织曲线与后续融合分析；HRV 仅作为 RMSSD 等觉察指标展示，不作医疗诊断
+- **`mood_entries`**：心情记录（`roleId`、坐标、日记、发生时间、`hr_at_entry`）
 - **`daily_guidance_cache`**：云端下发的当日指导 JSON
 
 ### 融合思路
@@ -228,6 +248,7 @@ flowchart TB
 
 - [README.md](./README.md) — 开发环境、运行步骤、项目结构
 - [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — 已实现功能施工清单（Agent 必读，不含待做项）
+- [PRODUCT_EMOTION_DESIGN.md](./PRODUCT_EMOTION_DESIGN.md) — 情绪角色化 UI 与认知心理学设计指南
 - [主路线图 Plan](../.cursor/plans/loop心情ai产品规划_9d502bd3.plan.md) — 总体愿景、API/数据模型
 - [统一存储核心 Plan](../.cursor/plans/统一存储核心模块_5f5a20f2.plan.md) — P0 已完成
 - [Phase 2 心情记录 Plan](../.cursor/plans/phase2心情记录移植.plan.md)
@@ -237,4 +258,4 @@ flowchart TB
 
 ---
 
-*文档版本：Phase 1 + P0 + Phase 2（emotion v3.7 对齐）；最后更新 2026-06-13。*
+*文档版本：Phase 1 + P0 + Phase 2（v4 情绪角色化 UI）；最后更新 2026-06-14。*

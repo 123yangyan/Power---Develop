@@ -5,12 +5,22 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.owner.mindbody.data.sync.SyncableDao
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SkinTemp247SampleDao : SyncableDao<SkinTemp247SampleEntity> {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(samples: List<SkinTemp247SampleEntity>)
+
+    @Query(
+        """
+        SELECT * FROM skin_temp_247_samples
+        WHERE timestamp BETWEEN :startMs AND :endMs
+        ORDER BY timestamp ASC
+        """
+    )
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<SkinTemp247SampleEntity>>
 
     @Query(
         """
