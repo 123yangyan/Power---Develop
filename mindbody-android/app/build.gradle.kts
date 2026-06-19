@@ -15,8 +15,8 @@ android {
         applicationId = "com.owner.mindbody"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.3.2"
+        versionCode = 8
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -93,8 +93,11 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // WorkManager（Phase 2 心情提醒）
+    // WorkManager（Phase 2 心情提醒 + Phase 3 云端同步）
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // HTTP 客户端（云端同步）
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
