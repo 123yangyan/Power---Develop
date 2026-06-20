@@ -22,30 +22,40 @@ import com.owner.mindbody.ui.components.ChartValuePoint
 import com.owner.mindbody.ui.components.ChartWindowPreset
 import com.owner.mindbody.ui.components.MindBodyChartState
 import com.owner.mindbody.ui.components.SplineChartUtils
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 
+@OptIn(FlowPreview::class)
 class HeartRateViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as MindBodyApplication
     private val hrRepository = app.storage.hr
     private val hr247Repository = app.storage.hr247
     private val zoneId = ZoneId.systemDefault()
-    private val todayStartMs = LocalDate.now(zoneId).atStartOfDay(zoneId).toInstant().toEpochMilli()
-    private val todayEndMs = LocalDate.now(zoneId).plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli() - 1
+
+    /** 每次调用动态计算今日零点，避免跨天时 ViewModel 持有过期值 */
+    private fun todayStartMs(): Long =
+        LocalDate.now(zoneId).atStartOfDay(zoneId).toInstant().toEpochMilli()
+
+    private fun todayEndMs(): Long =
+        LocalDate.now(zoneId).plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli() - 1
+
     private val _windowPreset = MutableStateFlow(ChartWindowPreset.ONE_HOUR)
     private val _windowStartMs = MutableStateFlow(
-        (System.currentTimeMillis() - ChartWindowPreset.ONE_HOUR.durationMs).coerceAtLeast(todayStartMs)
+        (System.currentTimeMillis() - ChartWindowPreset.ONE_HOUR.durationMs).coerceAtLeast(todayStartMs())
     )
 
     val currentHr: StateFlow<Int?> = app.polarBleManager.currentHr
@@ -66,15 +76,15 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val tempSamples = combine(
-        app.storage.skinTemp.observeBetween(todayStartMs, todayEndMs),
-        app.storage.skinTemp247.observeBetween(todayStartMs, todayEndMs)
+        app.storage.skinTemp.observeBetween(todayStartMs(), todayEndMs()),
+        app.storage.skinTemp247.observeBetween(todayStartMs(), todayEndMs())
     ) { live, offline ->
         mergeSkinTempSamples(live, offline)
     }
 
     private val ppiSamples = combine(
-        app.storage.ppi.observeBetween(todayStartMs, todayEndMs),
-        app.storage.ppi247.observeBetween(todayStartMs, todayEndMs)
+        app.storage.ppi.observeBetween(todayStartMs(), todayEndMs()),
+        app.storage.ppi247.observeBetween(todayStartMs(), todayEndMs())
     ) { live, offline ->
         mergePpiSamples(live, offline)
     }
@@ -83,8 +93,8 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
         todaySamples,
         tempSamples,
         ppiSamples,
-        app.storage.activityMinute.observeBetween(todayStartMs, todayEndMs),
-        app.storage.training.observeSessionsBetween(todayStartMs, todayEndMs)
+        app.storage.activityMinute.observeBetween(todayStartMs(), todayEndMs()),
+        app.storage.training.observeSessionsBetween(todayStartMs(), todayEndMs())
     ) { hr, temp, ppi, activity, training ->
         ChartData(
             hrPoints = hr.map { ChartValuePoint(it.timestamp, it.bpm.toFloat()) },
@@ -93,7 +103,10 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
             activityPoints = activity.mapNotNull { it.toActivityPoint() },
             exerciseBands = training.mapNotNull { it.toExerciseBand() }
         )
-    }.flowOn(Dispatchers.Default)
+    }
+        .sample(1_000L)   // 每秒最多重算一次，防止 BLE 高频插入造成背压
+        .conflate()       // 下游慢时丢弃中间值只保留最新
+        .flowOn(Dispatchers.Default)
 
     val chartState: StateFlow<MindBodyChartState> = combine(
         chartData,
@@ -101,11 +114,12 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
         _windowStartMs
     ) { data, preset, requestedStart ->
         val now = System.currentTimeMillis()
+        val todayStart = todayStartMs()
         val window = SplineChartUtils.clampTimeWindow(
             requestedStartMs = requestedStart,
             durationMs = preset.durationMs,
-            minStartMs = todayStartMs,
-            maxEndMs = now.coerceAtLeast(todayStartMs + 1)
+            minStartMs = todayStart,
+            maxEndMs = now.coerceAtLeast(todayStart + 1)
         )
         MindBodyChartState(
             hrPoints = SplineChartUtils.downsampleValues(data.hrPoints, preset.bucketMs),
@@ -115,7 +129,7 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
             exerciseBands = data.exerciseBands,
             window = window,
             preset = preset,
-            todayStartMs = todayStartMs,
+            todayStartMs = todayStart,
             nowMs = now
         )
     }.flowOn(Dispatchers.Default)
@@ -132,6 +146,9 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             todaySamples.collect {
                 _todayStats.value = withContext(Dispatchers.IO) {
+                    // flush 所有在线流缓冲区（HR + 皮温 + ACC + PPI），
+                    // 确保 Room 查询能立即看到最新数据，消除 3 指标变 1 指标的时间窗口
+                    app.storage.flushAll()
                     hrRepository.getTodayStats()
                 }
             }
@@ -147,8 +164,16 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun setChartPreset(preset: ChartWindowPreset) {
+        val previousPreset = _windowPreset.value
         _windowPreset.value = preset
-        _windowStartMs.value = (System.currentTimeMillis() - preset.durationMs).coerceAtLeast(todayStartMs)
+        if (previousPreset != preset) {
+            // 切换预设时尽量保持当前查看时间中心，避免丢弃用户拖拽位置
+            val currentCenter = _windowStartMs.value + previousPreset.durationMs / 2
+            val todayStart = todayStartMs()
+            _windowStartMs.value = (currentCenter - preset.durationMs / 2)
+                .coerceAtLeast(todayStart)
+                .coerceAtMost(System.currentTimeMillis())
+        }
     }
 
     fun panChartWindow(deltaMs: Long) {
@@ -220,16 +245,17 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun initialChartState(): MindBodyChartState {
         val now = System.currentTimeMillis()
+        val todayStart = todayStartMs()
         val window = SplineChartUtils.clampTimeWindow(
-            requestedStartMs = (now - ChartWindowPreset.ONE_HOUR.durationMs).coerceAtLeast(todayStartMs),
+            requestedStartMs = (now - ChartWindowPreset.ONE_HOUR.durationMs).coerceAtLeast(todayStart),
             durationMs = ChartWindowPreset.ONE_HOUR.durationMs,
-            minStartMs = todayStartMs,
-            maxEndMs = now.coerceAtLeast(todayStartMs + 1)
+            minStartMs = todayStart,
+            maxEndMs = now.coerceAtLeast(todayStart + 1)
         )
         return MindBodyChartState(
             window = window,
             preset = ChartWindowPreset.ONE_HOUR,
-            todayStartMs = todayStartMs,
+            todayStartMs = todayStart,
             nowMs = now
         )
     }

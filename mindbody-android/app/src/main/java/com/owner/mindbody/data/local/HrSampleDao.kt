@@ -60,6 +60,18 @@ interface HrSampleDao : SyncableDao<HrSampleEntity> {
     @Query("DELETE FROM hr_samples WHERE timestamp < :beforeMs")
     suspend fun deleteOlderThan(beforeMs: Long)
 
+    /** 删除指定时间之前已同步的数据，7天滚动清理专用。安全：只删 SYNCED 行。Room 不支持 DELETE LIMIT，用 IN 子查询分批删。 */
+    @Query(
+        """
+        DELETE FROM hr_samples WHERE id IN (
+            SELECT id FROM hr_samples
+            WHERE timestamp < :cutoffMs AND syncState = 'SYNCED'
+            LIMIT 5000
+        )
+        """
+    )
+    suspend fun deleteSyncedBefore(cutoffMs: Long): Int
+
     @Query(
         """
         SELECT * FROM hr_samples

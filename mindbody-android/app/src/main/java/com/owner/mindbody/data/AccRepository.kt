@@ -7,18 +7,18 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 
 /**
- * 加速度仓库：内存中按分钟聚合，落库时只保存每分钟均值/峰值幅度。
+ * 加速度仓库：10 秒桶聚合摘要落库（acc_minute_summary 表，minuteTimestamp 为桶起始 ms）。
  */
 class AccRepository(private val database: AppDatabase) {
 
-    private val dao = database.accMinuteSummaryDao()
+    private val summaryDao = database.accMinuteSummaryDao()
     private val aggregator = AccMinuteAggregator()
     private val flushMutex = Mutex()
 
     suspend fun ingestSample(x: Int, y: Int, z: Int, timestampMs: Long = System.currentTimeMillis()) {
         val ready = aggregator.addSample(x, y, z, timestampMs)
         if (ready != null) {
-            dao.upsertAll(listOf(ready))
+            summaryDao.upsertAll(listOf(ready))
         }
     }
 
@@ -30,32 +30,46 @@ class AccRepository(private val database: AppDatabase) {
 
     suspend fun flush() {
         flushMutex.withLock {
-            aggregator.flushPending()?.let { dao.upsertAll(listOf(it)) }
+            aggregator.flushPending()?.let { summaryDao.upsertAll(listOf(it)) }
         }
+    }
+
+    suspend fun getUnsynced(limit: Int): List<AccMinuteSummaryEntity> {
+        flush()
+        return summaryDao.getUnsynced(limit)
+    }
+
+    suspend fun markSynced(ids: List<Long>, remoteId: String? = null) {
+        summaryDao.markSynced(ids, remoteId)
+    }
+
+    suspend fun markFailed(ids: List<Long>) {
+        summaryDao.markFailed(ids)
     }
 }
 
 /**
- * 将高频 ACC 样本按「分钟起始时间戳」分桶聚合。
+ * 将高频 ACC 样本按「10 秒桶起始时间戳」分桶聚合。
  */
 internal class AccMinuteAggregator {
 
     private val mutex = Mutex()
-    private var currentMinuteStart: Long? = null
+    private var currentBucketStart: Long? = null
     private var magnitudeSum = 0.0
     private var maxMagnitude = 0f
     private var sampleCount = 0
 
     suspend fun addSample(x: Int, y: Int, z: Int, timestampMs: Long): AccMinuteSummaryEntity? {
-        val minuteStart = timestampMs - (timestampMs % MINUTE_MS)
+        val bucketStart = timestampMs - (timestampMs % BUCKET_MS)
         return mutex.withLock {
-            if (currentMinuteStart != null && minuteStart > currentMinuteStart!!) {
-                val completed = buildEntity(currentMinuteStart!!)
-                resetBucket(minuteStart, x, y, z)
+            val currentStart = currentBucketStart
+            if (currentStart != null && bucketStart > currentStart) {
+                val completed = buildEntity(currentStart)
+                resetBucket(bucketStart, x, y, z)
                 completed
             } else {
-                if (currentMinuteStart == null) {
-                    currentMinuteStart = minuteStart
+                if (currentBucketStart == null) {
+                    currentBucketStart = bucketStart
                 }
                 accumulate(x, y, z)
                 null
@@ -65,9 +79,9 @@ internal class AccMinuteAggregator {
 
     suspend fun flushPending(): AccMinuteSummaryEntity? {
         return mutex.withLock {
-            currentMinuteStart?.let { start ->
+            currentBucketStart?.let { start ->
                 val entity = buildEntity(start)
-                currentMinuteStart = null
+                currentBucketStart = null
                 magnitudeSum = 0.0
                 maxMagnitude = 0f
                 sampleCount = 0
@@ -76,8 +90,8 @@ internal class AccMinuteAggregator {
         }
     }
 
-    private fun resetBucket(minuteStart: Long, x: Int, y: Int, z: Int) {
-        currentMinuteStart = minuteStart
+    private fun resetBucket(bucketStart: Long, x: Int, y: Int, z: Int) {
+        currentBucketStart = bucketStart
         magnitudeSum = 0.0
         maxMagnitude = 0f
         sampleCount = 0
@@ -91,10 +105,10 @@ internal class AccMinuteAggregator {
         sampleCount++
     }
 
-    private fun buildEntity(minuteStart: Long): AccMinuteSummaryEntity {
+    private fun buildEntity(bucketStart: Long): AccMinuteSummaryEntity {
         val avg = if (sampleCount > 0) (magnitudeSum / sampleCount).toFloat() else 0f
         return AccMinuteSummaryEntity(
-            minuteTimestamp = minuteStart,
+            minuteTimestamp = bucketStart,
             avgMagnitudeMg = avg,
             maxMagnitudeMg = maxMagnitude,
             sampleCount = sampleCount
@@ -102,6 +116,6 @@ internal class AccMinuteAggregator {
     }
 
     companion object {
-        private const val MINUTE_MS = 60_000L
+        private const val BUCKET_MS = 10_000L
     }
 }

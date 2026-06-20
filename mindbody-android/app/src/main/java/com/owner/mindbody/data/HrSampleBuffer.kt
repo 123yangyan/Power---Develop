@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -60,9 +61,10 @@ class HrSampleBuffer(
 
     fun shutdown() {
         flushJob.cancel()
-        scope.launch {
+        runBlocking {
             flush()
         }
+        scope.coroutineContext[Job]?.cancel()
     }
 
     private fun MutableList<HrSampleEntity>.drain(): List<HrSampleEntity> {

@@ -23,7 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrainingSessionEntity::class,
         MoodEntryEntity::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -324,6 +324,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 -> v8：移除 acc_samples 表（改为仅 10 秒聚合 acc_minute_summary）。 */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS acc_samples")
+            }
+        }
+
+        /** v6 -> v7：原始三轴 ACC 高频样本表 acc_samples。 */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS acc_samples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        x INTEGER NOT NULL,
+                        y INTEGER NOT NULL,
+                        z INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncState TEXT NOT NULL,
+                        remoteId TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_acc_samples_timestamp ON acc_samples(timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_acc_samples_syncState ON acc_samples(syncState)")
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_acc_samples_timestamp_syncState
+                    ON acc_samples(timestamp, syncState)
+                    """.trimIndent()
+                )
+            }
+        }
+
         /** v5 -> v6：mood_entries 增加 roleId（情绪角色 ID）。 */
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -373,7 +409,9 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_2_3,
                         MIGRATION_3_4,
                         MIGRATION_4_5,
-                        MIGRATION_5_6
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .build()

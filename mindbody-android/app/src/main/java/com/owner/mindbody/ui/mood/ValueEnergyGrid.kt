@@ -34,7 +34,10 @@ import kotlin.math.roundToInt
  */
 @Deprecated(
     message = "记录主路径已退役；新记录请使用 EmotionRole / ActorStage。历史无 roleId 条目仍通过 CoordMiniBadge 展示 coord。",
-    replaceWith = ReplaceWith("ActorStage", "com.owner.mindbody.ui.mood.ActorStage")
+    replaceWith = ReplaceWith(
+        "ActorStage(onStageRoleTap = { role -> /* handle role selection */ })",
+        "com.owner.mindbody.ui.mood.ActorStage"
+    )
 )
 @Composable
 fun ValueEnergyGrid(

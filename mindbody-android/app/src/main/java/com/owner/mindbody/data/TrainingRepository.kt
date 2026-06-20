@@ -20,6 +20,10 @@ class TrainingRepository(private val database: AppDatabase) {
 
     suspend fun getUnsynced(limit: Int = 500) = dao.getUnsynced(limit)
 
+    suspend fun markSynced(paths: List<String>, remoteId: String? = null) {
+        if (paths.isNotEmpty()) dao.markSynced(paths, remoteId)
+    }
+
     fun observeSessionsBetween(startMs: Long, endMs: Long): Flow<List<TrainingSessionEntity>> {
         return dao.observeSessionsBetween(startMs, endMs)
     }

@@ -35,7 +35,11 @@ object MoodReminderDeliver {
             if (!moodPrefs.isNotificationsEnabledSync() && !moodPrefs.isStrongPopupSync()) return
             val quietStart = moodPrefs.getQuietStartSync()
             val quietEnd = moodPrefs.getQuietEndSync()
-            if (moodPrefs.isQuietHours(moodPrefs.currentMinutesOfDay(), quietStart, quietEnd)) return
+            if (moodPrefs.isQuietHours(moodPrefs.currentMinutesOfDay(), quietStart, quietEnd)) {
+                val delayMs = moodPrefs.msUntilQuietEnd()
+                if (delayMs > 0) MoodReminderScheduler.scheduleNextExact(context, delayMs)
+                return
+            }
 
             val intervalMs = moodPrefs.getEffectiveIntervalMs()
             val lastAt = moodPrefs.getLastReminderAtSync()

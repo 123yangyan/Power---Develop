@@ -9,8 +9,12 @@ import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.polar.PolarBleManager
 import com.owner.mindbody.util.AppLogger
+import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.MoodReminderScheduler
 import com.owner.mindbody.worker.MoodReminderWorker
+import com.owner.mindbody.worker.PruneDataWorker
+import com.owner.mindbody.worker.SyncWorker
+import androidx.work.ExistingWorkPolicy
 import com.polar.sdk.api.PolarBleApiDefaultImpl
 import kotlinx.coroutines.runBlocking
 
@@ -33,19 +37,35 @@ class MindBodyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        storage = AppStorage(this)
-        devicePreferences = DevicePreferences(this)
-        moodPreferences = MoodPreferences(this)
-        developerPreferences = DeveloperPreferences(this)
-        val deviceSyncManager = DeviceSyncManager(storage, storage.deviceSyncPreferences)
-        storage.initDeviceSync(deviceSyncManager)
-        polarBleManager = PolarBleManager(this, storage, devicePreferences, deviceSyncManager)
-        AppLogger.i(
-            "MindBodyApp",
-            "启动 v${BuildConfig.VERSION_NAME} · Polar SDK ${PolarBleApiDefaultImpl.versionInfo()}"
-        )
-        MoodReminderScheduler.schedule(this)
-        MoodReminderWorker.createChannel(this)
+        try {
+            storage = AppStorage(this)
+            devicePreferences = DevicePreferences(this)
+            moodPreferences = MoodPreferences(this)
+            developerPreferences = DeveloperPreferences(this)
+            val deviceSyncManager = DeviceSyncManager(storage, storage.deviceSyncPreferences)
+            storage.initDeviceSync(deviceSyncManager)
+            polarBleManager = PolarBleManager(this, storage, devicePreferences, deviceSyncManager)
+            AppLogger.i(
+                "MindBodyApp",
+                "启动 v${BuildConfig.VERSION_NAME} · Polar SDK ${PolarBleApiDefaultImpl.versionInfo()}"
+            )
+            MoodReminderScheduler.schedule(this)
+            MoodReminderWorker.createChannel(this)
+            SyncWorker.schedulePeriodic(this)
+            PruneDataWorker.schedulePeriodic(this)
+            BleSchedulerWorker.scheduleNext(
+                this,
+                BleSchedulerWorker.ACTION_DISCONNECT,
+                policy = ExistingWorkPolicy.KEEP
+            )
+        } catch (e: Exception) {
+            AppLogger.e("MindBodyApp", "初始化失败，请重启应用", e)
+            android.widget.Toast.makeText(
+                this,
+                "应用初始化失败，请尝试重启应用",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     override fun onTerminate() {

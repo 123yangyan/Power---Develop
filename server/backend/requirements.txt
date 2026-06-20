@@ -6,3 +6,5 @@ redis==5.2.1
 oss2==2.19.1
 dashscope==1.22.1
 pydantic-settings==2.7.0
+psycopg2-binary==2.9.10
+apscheduler==3.10.4

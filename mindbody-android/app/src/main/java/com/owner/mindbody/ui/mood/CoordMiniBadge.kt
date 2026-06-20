@@ -58,12 +58,12 @@ fun CoordMiniBadge(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                QuadCell("tl", quadrantId, QUADRANT_COLORS["tl"]!!)
-                QuadCell("bl", quadrantId, QUADRANT_COLORS["bl"]!!)
+                QuadCell("tl", quadrantId, QUADRANT_COLORS.getValue("tl"))
+                QuadCell("bl", quadrantId, QUADRANT_COLORS.getValue("bl"))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                QuadCell("tr", quadrantId, QUADRANT_COLORS["tr"]!!)
-                QuadCell("br", quadrantId, QUADRANT_COLORS["br"]!!)
+                QuadCell("tr", quadrantId, QUADRANT_COLORS.getValue("tr"))
+                QuadCell("br", quadrantId, QUADRANT_COLORS.getValue("br"))
             }
         }
         Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = activeColor)

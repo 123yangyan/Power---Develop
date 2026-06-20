@@ -1,0 +1,120 @@
+---
+description: server 后端 ECS 部署与加速约定（Docker 构建、SCP、vitals 热更新）；改 server/ 或部署到 120.26.204.190 时遵守
+globs: server/**
+alwaysApply: false
+---
+
+# Server ECS 部署与加速
+
+ECS：`120.26.204.190`，项目目录：`/opt/timedrecorder`。
+
+## 慢在哪里（不是 SCP）
+
+SCP 传几个 `.py` 通常 **几秒**。耗时的是 **`docker compose build --no-cache api`**：
+
+1. `apt-get` 从 `deb.debian.org` 拉包（国内 ECS 常 3–10 分钟）
+2. 全量 `pip install`（又数分钟）
+3. `--no-cache` **丢弃所有层缓存**，每次从零构建
+
+Agent 向用户说明部署耗时时，必须区分「上传」与「镜像构建」。
+
+---
+
+## 加速方案（按推荐顺序）
+
+### 方案 A：代码 volume 挂载 + restart（最快，改 Python 时首选）
+
+在 [`server/docker-compose.yml`](../../server/docker-compose.yml) 的 `api` 服务下挂载宿主机代码：
+
+```yaml
+volumes:
+  - api_data:/data
+  - ./backend/app:/app/app:ro
+```
+
+流程：
+
+```bash
+# 本机 SCP 或 upload 脚本上传 backend/app/*.py
+cd /opt/timedrecorder
+docker compose restart api   # 约 10–20 秒
+```
+
+**不要**为纯 Python 改动执行 `build --no-cache`。
+
+### 方案 B：带缓存的 build（未挂 volume 时）
+
+仅改 `backend/app/` 内 Python、**未改** `requirements.txt` / `Dockerfile`：
+
+```bash
+cd /opt/timedrecorder
+docker compose build api          # 不用 --no-cache
+docker compose up -d api
+```
+
+通常只重建 `COPY app` 层，**几十秒～2 分钟**。
+
+### 方案 C：全量无缓存 build（仅必要时）
+
+仅在以下情况使用：
+
+- 修改了 `server/backend/requirements.txt`
+- 修改了 `server/backend/Dockerfile`
+- 依赖/系统包异常，需强制重装
+
+```bash
+docker compose build --no-cache api
+docker compose up -d api
+```
+
+### 方案 D：Dockerfile apt 换阿里云源（中长期）
+
+在 `Dockerfile` 的 `apt-get` 前换 Debian 国内源，可显著缩短 **方案 C** 的 `apt-get` 阶段。`pip` 已用 `mirrors.aliyun.com`。
+
+### 方案 E：预构建基础镜像（可选）
+
+将 `python:3.12-slim + apt 包 + pip 依赖` 打成私有基础镜像，日常只 `COPY app`；适合频繁全量构建场景。
+
+---
+
+## 本机上传到 ECS
+
+- **交互式脚本**（会提示 root 密码）：[`server/scripts/upload-ecs-vitals-fix.ps1`](../../server/scripts/upload-ecs-vitals-fix.ps1)
+- **勿用** `$host` 作 SSH 目标（PowerShell 内置变量）；远程命令用**单引号**字符串，避免 `$` 被本机解析
+- PowerShell 脚本内 **Write-Host 用英文**，避免 GBK/UTF-8 混用导致 ParserError
+- Agent 环境 **无 SSH 密钥** 时 `scp`/`ssh -o BatchMode=yes` 会失败；应让用户在本机 PowerShell 跑上传脚本，或 WinSCP 拖到 `/opt/timedrecorder/backend/app/`
+
+ECS 一键 patch + 验证：[`server/scripts/ecs-patch-vitals-deploy.sh`](../../server/scripts/ecs-patch-vitals-deploy.sh)
+
+- 日常 Python 热更：脚本内应优先 `docker compose build api`（无 `--no-cache`）或 `restart api`（已挂 volume）
+- 校验 `vitals_models` 时用：`grep '"client_row_id", "ts"'`（**不是** `client_row_id, "ts"`）
+
+---
+
+## vitals batch 相关约定
+
+- PostgreSQL + TimescaleDB：`ON CONFLICT` 唯一键须含分区列 `ts`
+- 模型：[`server/backend/app/vitals_models.py`](../../server/backend/app/vitals_models.py) — `UniqueConstraint(..., "ts", ...)`
+- API：[`server/backend/app/vitals_api.py`](../../server/backend/app/vitals_api.py) — 每行 `SessionLocal.begin()` 独立事务
+- 启动索引：[`server/backend/app/database.py`](../../server/backend/app/database.py) — `_ensure_vitals_dedup_indexes()`
+- Schema/约束变更后需 `docker compose down -v` 再 up（会清空 PG 卷）；仅 Python 逻辑变更 **不需要** `down -v`
+
+验证写入：
+
+```bash
+curl -s -X POST http://127.0.0.1/api/vitals/batch \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"test001","source":"LIVE_STREAM","table":"hr_samples","rows":[{"clientRowId":"r1","ts":1718000001000,"bpm":75,"rr_ms":810}]}'
+```
+
+成功：`"inserted":1`（非 0）。
+
+---
+
+## Agent 部署 checklist
+
+1. 判断改动范围：仅 `app/*.py` → 方案 A 或 B；依赖/Dockerfile → 方案 C
+2. 默认 **禁止** 在部署指令中写 `build --no-cache`，除非用户明确要求或改了依赖
+3. 上传后验证容器内代码：`docker compose exec api grep SessionLocal.begin /app/app/vitals_api.py`
+4. 失败时：`docker compose logs api --tail 30`

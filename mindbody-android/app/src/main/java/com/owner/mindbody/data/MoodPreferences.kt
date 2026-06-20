@@ -144,6 +144,19 @@ class MoodPreferences(private val context: Context) {
         }
     }
 
+    /** 从当前时刻到静默结束时刻的毫秒数（含 1 分钟缓冲），供 Worker 重排 exact 提醒。 */
+    suspend fun msUntilQuietEnd(): Long {
+        val quietEnd = getQuietEndSync()
+        val endMinutes = parseTimeToMinutes(quietEnd)
+        val nowMinutes = currentMinutesOfDay()
+        val diffMinutes = if (endMinutes > nowMinutes) {
+            endMinutes - nowMinutes
+        } else {
+            (24 * 60 - nowMinutes) + endMinutes
+        }
+        return diffMinutes * 60_000L + 60_000L
+    }
+
     fun currentMinutesOfDay(): Int {
         val now = LocalTime.now()
         return now.hour * 60 + now.minute
@@ -164,7 +177,7 @@ class MoodPreferences(private val context: Context) {
             return minutes.coerceIn(MIN_REMINDER_INTERVAL_MINUTES, MAX_REMINDER_INTERVAL_MINUTES)
         }
 
-        private fun parseTimeToMinutes(time: String): Int {
+        fun parseTimeToMinutes(time: String): Int {
             return runCatching {
                 val parts = time.split(":")
                 parts[0].toInt() * 60 + parts.getOrElse(1) { "0" }.toInt()

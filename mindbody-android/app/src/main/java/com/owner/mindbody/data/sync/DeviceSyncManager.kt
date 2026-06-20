@@ -10,11 +10,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
+import java.time.LocalDateTime
+
+/** 设备离线数据同步状态 */
+enum class DeviceSyncStatus {
+    IDLE,
+    SYNCING,
+    SUCCESS,
+    FAILED
+}
 
 /**
  * 设备离线数据同步：在 BLE Feature 就绪后，从 Polar Loop 拉取活动/睡眠/训练等数据并落库。
@@ -27,6 +39,14 @@ class DeviceSyncManager(
         private const val TAG = "DeviceSyncManager"
         private const val DEFAULT_LOOKBACK_DAYS = 7L
     }
+
+    private val _syncStatus = MutableStateFlow(DeviceSyncStatus.IDLE)
+    /** 当前同步状态，UI 层可观察以展示同步进度/错误提示。 */
+    val syncStatus: StateFlow<DeviceSyncStatus> = _syncStatus.asStateFlow()
+
+    private val _lastSyncError = MutableStateFlow<String?>(null)
+    /** 最近一次同步错误信息（成功时置 null）。 */
+    val lastSyncError: StateFlow<String?> = _lastSyncError.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -55,30 +75,84 @@ class DeviceSyncManager(
         activityReady = false
         sleepReady = false
         trainingReady = false
+        _syncStatus.value = DeviceSyncStatus.IDLE
+    }
+
+    fun shutdown() {
+        syncJob?.cancel()
+        _syncStatus.value = DeviceSyncStatus.IDLE
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     private fun scheduleSync(deviceId: String) {
         syncJob?.cancel()
         syncJob = scope.launch {
             syncMutex.withLock {
+                _syncStatus.value = DeviceSyncStatus.SYNCING
+                _lastSyncError.value = null
                 runCatching { syncAll(deviceId) }
-                    .onFailure { AppLogger.e(TAG, "Device sync failed", it) }
+                    .onSuccess { completed ->
+                        if (completed) {
+                            _syncStatus.value = DeviceSyncStatus.SUCCESS
+                            AppLogger.i(TAG, "Device sync completed successfully")
+                        } else {
+                            _syncStatus.value = DeviceSyncStatus.IDLE
+                        }
+                    }
+                    .onFailure {
+                        _syncStatus.value = DeviceSyncStatus.FAILED
+                        _lastSyncError.value = it.message
+                        AppLogger.e(TAG, "Device sync failed", it)
+                    }
             }
         }
     }
 
-    suspend fun syncAll(deviceId: String) {
-        val polarApi = api ?: return
-        if (activityReady) {
-            syncActivityData(polarApi, deviceId)
+    suspend fun syncAll(deviceId: String): Boolean {
+        val polarApi = api ?: return false
+
+        // 1. 通知设备准备数据同步（将缓存数据刷入文件、进入高速传输模式）
+        //    参见 Polar SDK SyncImplementationGuideline: 必须在读取数据前调用此方法
+        try {
+            val ready = polarApi.sendInitializationAndStartSyncNotifications(deviceId)
+            if (!ready) {
+                AppLogger.w(TAG, "Device not ready for sync — device busy or training in progress")
+                return false
+            }
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "Failed to init sync notifications, continuing anyway", e)
         }
-        if (sleepReady) {
-            syncSleepData(polarApi, deviceId)
+
+        try {
+            // 2. 同步设备时间，确保按日期查询的数据范围准确
+            //    参见 SyncImplementationGuideline: "Check that device clock is up-to-date"
+            try {
+                polarApi.setLocalTime(deviceId, LocalDateTime.now())
+                AppLogger.d(TAG, "Device time synced")
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Failed to set device time", e)
+            }
+
+            // 3. 按 SDK Feature 就绪情况分阶段拉取数据
+            if (activityReady) {
+                syncActivityData(polarApi, deviceId)
+            }
+            if (sleepReady) {
+                syncSleepData(polarApi, deviceId)
+            }
+            if (trainingReady) {
+                syncTrainingData(polarApi, deviceId)
+            }
+            storage.flushAll()
+        } finally {
+            // 4. 确保无论成功失败都退出同步模式，让设备回到正常功耗状态
+            try {
+                polarApi.sendTerminateAndStopSyncNotifications(deviceId)
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Failed to stop sync notifications", e)
+            }
         }
-        if (trainingReady) {
-            syncTrainingData(polarApi, deviceId)
-        }
-        storage.flushAll()
+        return true
     }
 
     private suspend fun syncActivityData(api: PolarBleApi, deviceId: String) {

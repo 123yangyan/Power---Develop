@@ -87,6 +87,17 @@ blocked 的 Phase **不得**提前实现其消费者逻辑。
 
 ---
 
+## Rule 文件索引（server 部署见 `server-ecs-deploy.mdc`）
+
+| Rule | 路径 | 何时读 |
+|------|------|--------|
+| 项目优先级 | `.cursor/rules/project-priority.mdc` | 始终 |
+| 功能清单 | `.cursor/rules/feature-ledger.mdc` | mindbody-android 任务 |
+| 文档编码 | `.cursor/rules/doc-encoding.mdc` | 编辑含中文的 .mdc/.md |
+| ECS 部署加速 | `.cursor/rules/server-ecs-deploy.mdc` | `server/` 部署、Docker、vitals API |
+
+---
+
 ## 参考源码入口（mindbody-android）
 
 - 应用入口：`MindBodyApplication.kt` → `storage: AppStorage`

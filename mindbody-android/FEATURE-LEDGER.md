@@ -6,11 +6,11 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品说明：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-15
+**最后更新**：2026-06-20
 
 ---
 
-## 索引（已实现 31 条）
+## 索引（已实现 35 条 + 稳定性修复 8 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -32,6 +32,8 @@
 | F-P1-010 | 设备离线数据同步落库 | sync-device-manager |
 | F-P1-011 | 开发者模式与运行日志 | phase1-android-polar |
 | F-P1-012 | 身心交织多指标曲线 | mindbody-chart-overlay |
+| F-P1-014 | ACC 10 秒桶聚合（acc_minute_summary） | acc-10s-aggregator |
+| F-P1-015 | BLE 夜间自动断联 / 晨间重连 | ble-nightly-scheduler |
 | F-P2-001 | mood_entries 实体与 Repository | mood-entity |
 | F-P2-002 | ValueEnergyGrid 四象限点选 | value-energy-grid |
 | F-P2-003 | DiaryInput 日记输入 | diary-input |
@@ -45,6 +47,8 @@
 | F-P2-011 | 强弹窗 CheckIn + snooze/逃避记录 | wave-b-checkin-dialog |
 | F-P2-012 | 历史 CoordMiniBadge 与分页增强 | wave-c-history-polish |
 | F-P2-013 | 情绪角色化 UI v4（探查抽屉 + 沉浸记录） | emotion-ui-v4 |
+| F-P3-001 | SyncManager ts 修复（ActivityDay/NightlyRecharge） | fix-ts-zero |
+| F-P3-002 | DeviceScreen 设备离线同步状态 UI | add-devicesync-ui |
 
 路径均相对于 `app/src/main/java/com/owner/mindbody/`。
 
@@ -713,6 +717,143 @@
 
 ---
 
+## 稳定性修复 (2026-06-17)
+
+基于全量代码分析报告的 8 项 Bug 修复。
+
+### F-BUG-001 CoroutineScope 生命周期泄漏
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #1-3 |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`HrSampleBuffer`、`EntitySampleBuffer`、`PolarBleManager`、`DeviceSyncManager` 各自创建 `CoroutineScope(SupervisorJob()+Dispatchers.IO)`，`shutdown()` 从未 cancel scope，长时间运行后内存增长。
+- **修复**：
+  - `HrSampleBuffer.shutdown()` → 增加 `scope.cancel()`
+  - `EntitySampleBuffer.shutdown()` → 增加 `scope.cancel()`
+  - `PolarBleManager.shutdown()` → 增加 `scope.cancel()` + 调用 `deviceSyncManager.shutdown()`
+  - `DeviceSyncManager` → 新增 `shutdown()` 方法，cancel `syncJob` 和 `scope`
+- **关键文件**：`data/HrSampleBuffer.kt`、`data/EntitySampleBuffer.kt`、`polar/PolarBleManager.kt`、`data/sync/DeviceSyncManager.kt`
+
+---
+
+### F-BUG-002 Application 启动错误处理
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #5a |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`MindBodyApplication.onCreate()` 无 try-catch，Room DB 创建失败直接崩溃。
+- **修复**：用 try-catch 包裹初始化逻辑，catch 中通过 `AppLogger` 记录错误并通过 Toast 提示用户重启。
+- **关键文件**：`MindBodyApplication.kt`
+
+---
+
+### F-BUG-003 传感器时间戳使用 SDK 时间
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #4b |
+| 最后更新 | 2026-06-20 |
+
+#### 已修复内容（分两阶段完成）
+
+**阶段一（2026-06-17）**：
+- batch-local `now`：将 `System.currentTimeMillis()` 从每样本调用提取为批次级变量，消除同批次各样本时间戳不一致的问题。适用于 HR、皮温、ACC 三路流（SDK 未暴露这三路的传感器级时间戳）。
+
+**阶段二（2026-06-20）**：
+- **PPI 传感器时间**：`PolarPpiSample.timeStamp`（Polar epoch 纳秒）已正确转换为 Unix ms 写入 DB。  
+  转换公式：`Unix ms = (timeStamp / 1_000_000) + 946_684_800_000`（Polar 2000-01-01 → Unix 1970-01-01 偏移）。  
+  `timeStamp == 0` 时 fallback 手机时间并输出 `WARN` 日志，不崩溃。
+- **工具函数**：`PolarBleManager.polarSensorTimeToUnixMs(timeStampNs: ULong): Long?`（companion object 内）。
+- **连接校时**：`FEATURE_POLAR_ONLINE_STREAMING` 就绪时在协程中调用 `api.setLocalTime(identifier, LocalDateTime.now())`，保证 PPI 帧 timeStamp 有效；失败时告警并继续流（不阻断）。`DeviceSyncManager.syncAll()` 内保留定期重校，两者互补。
+- **关键文件**：`polar/PolarBleManager.kt`（`companion object`、`processPpiData`、`bleSdkFeatureReady`）
+
+---
+
+### F-BUG-004 SnoozeReceiver 结构化并发
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #3b |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`MoodReminderSnoozeReceiver` 中 `CoroutineScope(Dispatchers.IO).launch` 无超时控制，进程被 kill 前逃避记录可能丢失。
+- **修复**：使用 `withTimeout(10_000L)` 包裹异步逻辑，10 秒内未完成则自动取消。
+- **关键文件**：`worker/MoodReminderSnoozeReceiver.kt`
+
+---
+
+### F-BUG-005 connectForSnapshot 异常分类
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #5d |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`connectForSnapshot()` 外层 `catch (e: Exception)` 吞噬所有异常类型，TimeoutCancellationException 和 CancellationException 未正确区分处理。
+- **修复**：分离三种异常处理 —— `TimeoutCancellationException`（超时，记录警告）、`CancellationException`（rethrow）、其他 `Exception`（记录错误），不同异常给出不同 status message。
+- **关键文件**：`polar/PolarBleManager.kt`
+
+---
+
+### F-BUG-006 AppLogBuffer 锁内 StateFlow 更新优化
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #6b |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`AppLogBuffer.append()` 在 `synchronized` 锁内做 `deque.toList()` 全量复制（最多 800 条），阻塞所有并发的 append 调用者。
+- **修复**：将 `_entries.value = deque.toList()` 移到 `synchronized` 块外部，先在锁内完成 deque 操作并拷贝快照，释放锁后再更新 StateFlow。
+- **关键文件**：`util/AppLogBuffer.kt`
+
+---
+
+### F-BUG-007 !! 强制解包替换
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #4a, #12b |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`AccRepository.AccMinuteAggregator` 和 `CoordMiniBadge` 中多处 `!!` 强制解包，重构时易引入 NPE。
+- **修复**：
+  - `AccRepository.kt` → 用局部变量 `currentStart` 缓存可空值，消除两处 `!!`
+  - `CoordMiniBadge.kt` → 用 `Map.getValue(key)` 替代 `Map[key]!!`（均为编译期确定的常量 key，`getValue` 更符合"必须存在"的语义）
+- **关键文件**：`data/AccRepository.kt`、`ui/mood/CoordMiniBadge.kt`
+
+---
+
+### F-BUG-008 @Deprecated ReplaceWith 修正
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | PROJECT-ANALYSIS-REPORT.md / 问题 #11a |
+| 最后更新 | 2026-06-17 |
+
+#### 已修复内容
+
+- **问题**：`ValueEnergyGrid` 的 `@Deprecated` 注解 `ReplaceWith` 表达式引用 `ActorStage` 但缺少参数，IDE 自动替换会编译失败。
+- **修复**：修正 `ReplaceWith` 表达式为含 lambda 参数的完整调用 `ActorStage(onStageRoleTap = { role -> /* handle role selection */ })`。
+- **关键文件**：`ui/mood/ValueEnergyGrid.kt`
+
+---
+
 ## 新增条目模板（功能完成后追加）
 
 ```markdown
@@ -735,3 +876,89 @@
 ```
 
 新 ID：`F-P{优先级}-{序号}`，序号在同级内递增；**仅在实际代码合并后**才写入清单。
+
+---
+
+## P3 — 云端融合与展示修复
+
+### F-P3-001 SyncManager ts 修复（ActivityDay/NightlyRecharge）
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 生理数据落库与展示修复 / todo: fix-ts-zero |
+| 最后更新 | 2026-06-19 |
+
+#### 已实现方案
+- **目的**：修复 `ActivityDaySummaryEntity` 和 `NightlyRechargeEntity` 上传云端时 `ts=0L` 导致所有时间窗查询为空的 bug。
+- **入口**：`data/sync/SyncManager.kt` → `entityToMap()` 的 `map["ts"]` 赋值块。
+- **关键文件**：`data/sync/SyncManager.kt`（新增 `parseDateToEpochMs(date: String): Long`）
+- **调用约定**：`parseDateToEpochMs` 将 `"yyyy-MM-dd"` 字符串解析为 UTC 00:00:00 的 epoch 毫秒；解析失败时 fallback 到 `0L`。
+- **验收要点**：云端 `activity_day_summary` / `nightly_recharge` 表的 `ts` 列值为当天 UTC 零时对应的毫秒数（如 2026-06-19 → 1750291200000）；看板「运动活动」步数柱状图有数据。
+
+#### 变更记录
+- 2026-06-19：`ActivityDaySummaryEntity`/`NightlyRechargeEntity` 的 `ts` 从 `0L` 改为 `parseDateToEpochMs(entity.date)` (#fix-ts-zero)
+
+---
+
+### F-P3-002 DeviceScreen 设备离线同步状态 UI
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 生理数据落库与展示修复 / todo: add-devicesync-ui |
+| 最后更新 | 2026-06-19 |
+
+#### 已实现方案
+- **目的**：在设备连接后，让用户可见 `DeviceSyncManager` 的 IDLE/SYNCING/SUCCESS/FAILED 状态及失败原因。
+- **入口**：`ui/device/DeviceScreen.kt` → 手环 `PremiumCard` 内，`status?.let` 块之后。
+- **关键文件**：
+  - `ui/device/DeviceViewModel.kt`：新增 `deviceSyncStatus: StateFlow<DeviceSyncStatus>` 和 `deviceSyncError: StateFlow<String?>` 两个 StateFlow。
+  - `ui/device/DeviceScreen.kt`：新增 `DeviceSyncStatusRow` Composable；仅在 `CONNECTED` 时显示。
+- **调用约定**：`DeviceSyncStatusRow(syncStatus, errorMsg, modifier)` — 独立 Composable，图标+颜色+文本随状态变化。
+- **验收要点**：手环连接后卡片底部出现「等待同步」→「正在拉取设备数据…」→「设备数据已同步」状态文字；失败时红色显示错误信息。
+
+#### 变更记录
+- 2026-06-19：DeviceViewModel 新增两个 StateFlow；DeviceScreen 新增 DeviceSyncStatusRow 组件 (#add-devicesync-ui)
+
+---
+
+### F-P1-014 ACC 10 秒桶聚合（acc_minute_summary）
+
+| 字段 | 值 |
+|------|-----|
+| Plan | ACC 10 秒聚合 / todo: acc-10s-* |
+| 最后更新 | 2026-06-19 |
+
+#### 已实现方案
+- **目的**：BLE 高频 ACC 在 Android 端按 10 秒桶聚合为 `avg_magnitude_mg` / `max_magnitude_mg` / `sample_count`，上传 `acc_minute_summary`；不保留原始 `acc_samples` 表。
+- **入口**：`polar/PolarBleManager.kt` → `processAccData()` → `AccRepository.ingestSample()`。
+- **关键文件**：
+  - `data/AccRepository.kt`：`BUCKET_MS = 10_000L`，`AccMinuteAggregator`
+  - `data/local/AppDatabase.kt`：`MIGRATION_7_8` 删除 `acc_samples` 表，version 8
+  - `data/sync/SyncManager.kt`：仅同步 `acc_minute_summary`
+- **调用约定**：每条样本插值 ts 后喂入聚合器；桶边界或 `flush()` 时 upsert 一行。
+- **验收要点**：Storage 看板「加速度10秒汇总」行数约 8640/天；云端 `acc_minute_summary` 的 `/series` 使用 `avg_magnitude_mg`。
+
+#### 变更记录
+- 2026-06-19：10 秒桶聚合；移除 acc_samples 全链路 (#acc-10s-aggregator)
+
+---
+
+### F-P1-015 BLE 夜间自动断联 / 晨间重连
+
+| 字段 | 值 |
+|------|-----|
+| Plan | P1 BLE 管理扩展 / todo: ble-nightly-scheduler |
+| 最后更新 | 2026-06-20 |
+
+#### 已实现方案
+- **目的**：每晚 22:00 自动断开 BLE，让 Polar Loop 进入离线夜间记录；次日 08:00 自动重连并触发 `DeviceSyncManager` 拉取 Sleep / Nightly Recharge 等离线数据。
+- **入口**：`MindBodyApplication.onCreate()` → `BleSchedulerWorker.scheduleNext(ACTION_DISCONNECT, KEEP)` 启动链式调度。
+- **关键文件**：
+  - `worker/BleSchedulerWorker.kt`：`ACTION_DISCONNECT` / `ACTION_RECONNECT`；`delayUntilNextHour()` 计算本地时区整点延迟；Worker 执行后 `scheduleNext()` 自我链接下一任务。
+  - `MindBodyApplication.kt`：应用启动时用 `ExistingWorkPolicy.KEEP` 注册首次断开任务，避免覆盖已排队 work。
+  - `polar/PolarBleManager.kt`：断开复用 `disconnect()`；重连复用 `tryAutoConnectSavedDevice(force=true)`。
+- **调用约定**：默认就寝 22:00、起床 08:00（常量 `DEFAULT_BEDTIME_HOUR` / `DEFAULT_WAKE_HOUR`）；`BleSchedulerWorker.cancel(context)` 可取消整条链。
+- **验收要点**：22:00 前后若 BLE 已连接则自动断开；08:00 前后自动扫描并重连已保存设备；重连后设备页可见离线同步状态变化；应用重启不重复排队（KEEP）。
+
+#### 变更记录
+- 2026-06-20：新增 BleSchedulerWorker 链式 OneTimeWork 调度 (#ble-nightly-scheduler)

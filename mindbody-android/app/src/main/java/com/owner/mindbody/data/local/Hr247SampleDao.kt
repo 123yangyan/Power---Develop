@@ -60,4 +60,16 @@ interface Hr247SampleDao : SyncableDao<Hr247SampleEntity> {
         if (ids.isEmpty()) return
         markFailedInternal(ids, System.currentTimeMillis())
     }
+
+    /** 删除指定时间之前已同步的数据，7天滚动清理专用。安全：只删 SYNCED 行。 */
+    @Query(
+        """
+        DELETE FROM hr_247_samples WHERE id IN (
+            SELECT id FROM hr_247_samples
+            WHERE timestamp < :cutoffMs AND syncState = 'SYNCED'
+            LIMIT 5000
+        )
+        """
+    )
+    suspend fun deleteSyncedBefore(cutoffMs: Long): Int
 }

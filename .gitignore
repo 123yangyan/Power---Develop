@@ -43,6 +43,11 @@ server/nginx/certs/*.key
 # 需要纳入时：删�?emotion-2.1.0/emotion-2.1.0/.git 后移除此行并 git add
 emotion-2.1.0/
 
-# --- Cursor 本地缓存（Plans/Rules 保留�?--
+# --- Cursor ?????Plans/Rules ???---
 .cursor/plans/*.tmp
 .cursor/**/cache/
+
+# --- ???? / ????????????---
+server/backend/*.db
+sandbox/
+mindbody-android/PROJECT-ANALYSIS-REPORT.md

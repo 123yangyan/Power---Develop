@@ -5,9 +5,12 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
+import com.owner.mindbody.data.sync.DeviceSyncStatus
+import com.owner.mindbody.data.sync.SyncApiClient
 import com.owner.mindbody.polar.ConnectionMode
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
+import com.owner.mindbody.worker.SyncWorker
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -51,6 +54,25 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     val developerModeEnabled: StateFlow<Boolean> = app.developerPreferences.developerModeEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // 设备离线同步状态（DeviceSyncManager 自动触发，此处仅暴露给 UI）
+    val deviceSyncStatus: StateFlow<DeviceSyncStatus> = app.storage.deviceSync.syncStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DeviceSyncStatus.IDLE)
+
+    val deviceSyncError: StateFlow<String?> = app.storage.deviceSync.lastSyncError
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // 云端同步状态
+    val syncBaseUrl: StateFlow<String> = app.storage.syncPreferences.baseUrl
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val syncApiKey: StateFlow<String> = app.storage.syncPreferences.apiKey
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val syncEnabled: StateFlow<Boolean> = app.storage.syncPreferences.syncEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val lastSyncTime: StateFlow<Long> = app.storage.syncPreferences.lastSyncTime
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    val lastSyncResult: StateFlow<String> = app.storage.syncPreferences.lastSyncResult
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val sdkVersion: String = polar.sdkVersion()
 
     fun scan() = polar.searchForDevices()
@@ -76,6 +98,22 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setConnectionMode(mode: ConnectionMode) = polar.setConnectionMode(mode)
+
+    fun setSyncBaseUrl(url: String) {
+        viewModelScope.launch { app.storage.syncPreferences.setBaseUrl(url) }
+    }
+
+    fun setSyncApiKey(key: String) {
+        viewModelScope.launch { app.storage.syncPreferences.setApiKey(key) }
+    }
+
+    fun setSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch { app.storage.syncPreferences.setSyncEnabled(enabled) }
+    }
+
+    fun triggerSyncNow() {
+        SyncWorker.enqueueOnce(app)
+    }
 
     /** 连点版本信息区域，满 7 次切换开发者模式。 */
     fun onVersionAreaTap() {

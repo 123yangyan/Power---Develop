@@ -19,6 +19,7 @@ import com.owner.mindbody.data.TrainingRepository
 import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.data.sync.SyncManager
+import com.owner.mindbody.data.sync.SyncPreferences
 
 /**
  * App 的统一存储入口。
@@ -49,7 +50,8 @@ class AppStorage(context: Context) {
     /** 开发者看板：各表行数统计（只读） */
     val storageStats: StorageStatsRepository = StorageStatsRepository(database, this)
 
-    val sync: SyncManager = SyncManager(hr)
+    val syncPreferences: SyncPreferences = SyncPreferences(context)
+    val sync: SyncManager = SyncManager(this, syncPreferences)
     val deviceSyncPreferences: DeviceSyncPreferences = DeviceSyncPreferences(context)
     lateinit var deviceSync: DeviceSyncManager
 
@@ -66,5 +68,53 @@ class AppStorage(context: Context) {
         ppi247.flush()
         skinTemp247.flush()
         activityMinute.flush()
+    }
+
+    /**
+     * 清理 [retainDays] 天前已同步的数据。
+     * 安全：只删 syncState = SYNCED 的行，PENDING/FAILED 绝对不删。
+     * 高频表分批 5000 行删除，避免 I/O 阻塞。
+     * @return 总共删除的行数
+     */
+    suspend fun pruneOldSyncedData(retainDays: Long = 7): Int {
+        val cutoffMs = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(retainDays)
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val cutoffDate = sdf.format(cutoffMs)
+        val batchLimit = 5000
+
+        var total = 0
+
+        // A 组：ms 时间戳表，分批循环
+        val msDeleters: List<Pair<String, suspend () -> Int>> = listOf(
+            "hr" to { database.hrSampleDao().deleteSyncedBefore(cutoffMs) },
+            "skin_temp" to { database.skinTempSampleDao().deleteSyncedBefore(cutoffMs) },
+            "ppi" to { database.ppiSampleDao().deleteSyncedBefore(cutoffMs) },
+            "acc_minute" to { database.accMinuteSummaryDao().deleteSyncedBefore(cutoffMs) },
+            "hr_247" to { database.hr247SampleDao().deleteSyncedBefore(cutoffMs) },
+            "ppi_247" to { database.ppi247SampleDao().deleteSyncedBefore(cutoffMs) },
+            "skin_temp_247" to { database.skinTemp247SampleDao().deleteSyncedBefore(cutoffMs) },
+            "activity_minute" to { database.activityMinuteSampleDao().deleteSyncedBefore(cutoffMs) },
+            "mood" to { database.moodEntryDao().deleteSyncedBefore(cutoffMs) },
+        )
+        for ((_, deleteFn) in msDeleters) {
+            var batch: Int
+            do {
+                batch = deleteFn()
+                total += batch
+            } while (batch >= batchLimit)
+        }
+
+        // B 组：日期字符串表，行少无需分批
+        val dateDeleters: List<suspend () -> Int> = listOf(
+            { database.activityDaySummaryDao().deleteSyncedBeforeDate(cutoffDate) },
+            { database.nightlyRechargeDao().deleteSyncedBeforeDate(cutoffDate) },
+            { database.sleepSessionDao().deleteSyncedBeforeDate(cutoffDate) },
+            { database.trainingSessionDao().deleteSyncedBeforeDate(cutoffDate) },
+        )
+        for (deleteFn in dateDeleters) {
+            total += deleteFn()
+        }
+
+        return total
     }
 }

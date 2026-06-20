@@ -12,4 +12,8 @@ class SleepRepository(private val database: AppDatabase) {
     }
 
     suspend fun getUnsynced(limit: Int = 500) = dao.getUnsynced(limit)
+
+    suspend fun markSynced(dates: List<String>, remoteId: String? = null) {
+        if (dates.isNotEmpty()) dao.markSynced(dates, remoteId)
+    }
 }

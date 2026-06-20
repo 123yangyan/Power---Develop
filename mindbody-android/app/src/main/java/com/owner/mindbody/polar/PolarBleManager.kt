@@ -7,6 +7,8 @@ import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.util.AppLogger
 import com.owner.mindbody.util.BlePermissionHelper
 import com.polar.androidcommunications.api.ble.model.DisInfo
+import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
+import com.polar.androidcommunications.api.ble.model.gatt.client.PowerSourcesState
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
 import com.polar.sdk.api.PolarBleApiDefaultImpl
@@ -15,6 +17,7 @@ import com.polar.sdk.api.model.PolarFirstTimeUseConfig
 import com.polar.sdk.api.model.PolarHealthThermometerData
 import com.polar.sdk.api.model.PolarHrData
 import com.polar.sdk.api.model.PolarPpiData
+import com.polar.sdk.api.model.PolarSensorSetting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -71,6 +75,21 @@ class PolarBleManager(
         private const val RECONNECT_DELAY_MS = 3_000L
         private const val SNAPSHOT_TIMEOUT_MS = 30_000L
         private const val AUTO_CONNECT_SCAN_TIMEOUT_MS = 15_000L
+
+        // Polar 设备 epoch 为 2000-01-01T00:00:00Z，Unix epoch 为 1970-01-01T00:00:00Z。
+        // 写入 DB / 上报服务端前须加此偏移（毫秒），使时间戳与手机端 System.currentTimeMillis() 同域。
+        private const val POLAR_TO_UNIX_EPOCH_OFFSET_MS = 946_684_800_000L
+
+        /**
+         * 将 Polar 传感器纳秒时间戳转换为 Unix 毫秒时间戳。
+         * @return Unix ms，或 null（当 timeStampNs == 0，表示设备未校时或不支持该字段）
+         */
+        fun polarSensorTimeToUnixMs(timeStampNs: ULong): Long? {
+            if (timeStampNs == 0uL) return null
+            // 先以 ULong 做除法，避免极大值 toLong() 时符号翻转
+            val polarMs = (timeStampNs / 1_000_000uL).toLong()
+            return polarMs + POLAR_TO_UNIX_EPOCH_OFFSET_MS
+        }
     }
 
     private val appContext = context.applicationContext
@@ -87,7 +106,8 @@ class PolarBleManager(
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TRAINING_DATA
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TRAINING_DATA,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TEMPERATURE_DATA
         )
     )
 
@@ -115,6 +135,12 @@ class PolarBleManager(
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
 
+    // 电量校准参数：手表实际报告的 [inputMin, inputMax] 映射到显示 [0, 100]
+    // 例如 Polar Loop 报告 50~100，则 inputMin=50, inputMax=100
+    // 默认 0~100 不做校准
+    private var batteryInputMin: Int = 0
+    private var batteryInputMax: Int = 100
+
     private val _ftuDone = MutableStateFlow(false)
     val ftuDone: StateFlow<Boolean> = _ftuDone.asStateFlow()
 
@@ -130,6 +156,7 @@ class PolarBleManager(
     private var hrStreamJob: Job? = null
     private var skinTempStreamJob: Job? = null
     private var accStreamJob: Job? = null
+    private var accSampleRateHz: Long = 52
     private var ppiStreamJob: Job? = null
     private var scanJob: Job? = null
     private var autoConnectJob: Job? = null
@@ -153,6 +180,20 @@ class PolarBleManager(
         }
         scope.launch {
             devicePreferences.connectionMode.collect { _connectionMode.value = it }
+        }
+        scope.launch {
+            devicePreferences.batteryInputMin.collect { batteryInputMin = it }
+        }
+        scope.launch {
+            devicePreferences.batteryInputMax.collect { batteryInputMax = it }
+        }
+    }
+
+    /** 设置电量校准参数并持久化。调用后需重新连接设备才能看到新值。 */
+    fun setBatteryCalibration(inputMin: Int, inputMax: Int) {
+        scope.launch {
+            devicePreferences.setBatteryInputMin(inputMin)
+            devicePreferences.setBatteryInputMax(inputMax)
         }
     }
 
@@ -324,6 +365,12 @@ class PolarBleManager(
 
                 snapshot
             }
+        } catch (e: TimeoutCancellationException) {
+            AppLogger.w(TAG, "Snapshot timed out: ${e.message}")
+            setStatus("HR 快照超时，请靠近手环后重试")
+            null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             AppLogger.e(TAG, "Snapshot failed", e)
             setStatus("HR 快照失败：${e.message}")
@@ -332,11 +379,17 @@ class PolarBleManager(
     }
 
     fun shutdown() {
+        // 先同步 flush 所有缓冲区，避免 scope.cancel() 杀死待处理的 flush 协程
+        runBlocking {
+            storage.flushAll()
+        }
         stopHrStreaming()
         stopSkinTempStreaming()
         stopAccStreaming()
         stopPpiStreaming()
         api.shutDown()
+        deviceSyncManager.shutdown()
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     suspend fun checkFtuStatus(deviceId: String): Boolean {
@@ -489,6 +542,11 @@ class PolarBleManager(
                     deviceId,
                     PolarBleApi.PolarDeviceDataType.ACC
                 ).maxSettings()
+                accSampleRateHz = settings.settings[PolarSensorSetting.SettingType.SAMPLE_RATE]
+                    ?.firstOrNull()
+                    ?.toLong()
+                    ?.coerceAtLeast(1)
+                    ?: 52L
                 api.startAccStreaming(deviceId, settings)
                     .catch { e ->
                         AppLogger.e(TAG, "ACC stream error", e)
@@ -540,42 +598,59 @@ class PolarBleManager(
         _latestPpi.value = null
     }
 
+    // 注: Polar BLE SDK 8.0.0 的 PolarPpiSample 已暴露 timeStamp 纳秒传感器时间戳，
+    // PPI 已优先使用传感器时间（见 processPpiData）。
+    // PolarHrData / PolarTemperatureData / PolarAccelerometerData 仍未暴露传感器时间戳，
+    // 这些数据暂时沿用 System.currentTimeMillis() 作为折中。
     private suspend fun processSkinTempData(data: com.polar.sdk.api.model.PolarTemperatureData) {
+        val now = System.currentTimeMillis()
         for (sample in data.samples) {
             _currentSkinTemp.value = sample.temperature
             storage.skinTemp.saveSample(
-                timestamp = System.currentTimeMillis(),
+                timestamp = now,
                 temperatureC = sample.temperature
             )
         }
     }
 
     private suspend fun processAccData(data: com.polar.sdk.api.model.PolarAccelerometerData) {
-        val now = System.currentTimeMillis()
-        for (sample in data.samples) {
+        if (data.samples.isEmpty()) return
+        val batchEndMs = System.currentTimeMillis()
+        val intervalMs = 1000L / accSampleRateHz.coerceAtLeast(1)
+        data.samples.forEachIndexed { i, sample ->
+            val ts = batchEndMs - (data.samples.size - 1 - i) * intervalMs
             _currentAcc.value = AccSample(x = sample.x, y = sample.y, z = sample.z)
-            storage.acc.ingestSample(sample.x, sample.y, sample.z, now)
+            storage.acc.ingestSample(sample.x, sample.y, sample.z, ts)
         }
     }
 
     private suspend fun processPpiData(data: PolarPpiData) {
         for (sample in data.samples) {
             _latestPpi.value = sample
+            // PolarPpiSample.timeStamp 是传感器纳秒级时间戳（每个心跳独立标记，2000-01-01 起）
+            // 须转换为 Unix ms（+946684800000）才能与手机端时间域对齐。
+            // timeStamp == 0 表示设备未校时或固件不支持，此时 fallback 到手机时间并告警。
+            val timestamp = polarSensorTimeToUnixMs(sample.timeStamp)
+                ?: run {
+                    AppLogger.w(TAG, "PPI sample timeStamp=0, falling back to system time")
+                    System.currentTimeMillis()
+                }
             storage.ppi.saveSample(
-                timestamp = System.currentTimeMillis(),
+                timestamp = timestamp,
                 sample = sample
             )
         }
     }
 
     private suspend fun processHrData(hrData: PolarHrData) {
+        val now = System.currentTimeMillis()
         for (sample in hrData.samples) {
             val hr = sample.hr
             if (hr > 0) {
                 _currentHr.value = hr
                 val rr = sample.rrsMs.firstOrNull()
                 storage.hr.saveSample(
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = now,
                     bpm = hr,
                     rrMs = rr
                 )
@@ -609,10 +684,31 @@ class PolarBleManager(
         _connectionState.value = ConnectionState.CONNECTED
         _connectedDeviceId.value = polarDeviceInfo.deviceId
         setStatus("已连接 ${polarDeviceInfo.deviceId}")
-        AppLogger.i(TAG, "deviceConnected id=${polarDeviceInfo.deviceId}")
+        AppLogger.i(TAG, "deviceConnected id=${polarDeviceInfo.deviceId} name=${polarDeviceInfo.name}")
         hrFeatureReady = false
         scope.launch {
-            checkFtuStatus(polarDeviceInfo.deviceId)
+            // GATT 服务刚连接时 BLE 通道尚未稳定，延迟后再查 FTU
+            delay(1_000L)
+            var checked = false
+            repeat(2) { attempt ->
+                if (checked) return@repeat
+                try {
+                    val result = api.isFtuDone(polarDeviceInfo.deviceId)
+                    _ftuDone.value = result
+                    devicePreferences.setFtuDone(result)
+                    AppLogger.d(TAG, "FTU status=$result id=${polarDeviceInfo.deviceId}")
+                    checked = true
+                } catch (e: Exception) {
+                    if (attempt < 1) {
+                        delay(1_000L)
+                    } else {
+                        AppLogger.w(
+                            TAG,
+                            "FTU check failed after retries (${e.javaClass.simpleName}), keeping cached value"
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -620,6 +716,7 @@ class PolarBleManager(
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedDeviceId.value = null
         _currentHr.value = null
+        _batteryLevel.value = null // 断开时清除电量，避免旧值残留
         hrFeatureReady = false
         deviceSyncManager.resetFeatureFlags()
         stopHrStreaming()
@@ -643,9 +740,36 @@ class PolarBleManager(
                 startHrStreaming(identifier)
             }
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
-                startSkinTempStreaming(identifier)
-                startAccStreaming(identifier)
-                startPpiStreaming(identifier)
+                scope.launch {
+                    // 先同步设备时间，确保 PPI 帧 timeStamp 有效（基于正确的 Polar epoch）。
+                    // 设备刚就绪时 GATT 可能尚未稳定，失败时退避重试后再启动流。
+                    var synced = false
+                    repeat(3) { attempt ->
+                        if (synced) return@repeat
+                        try {
+                            api.setLocalTime(identifier, LocalDateTime.now())
+                            AppLogger.d(
+                                TAG,
+                                "Device time synced before streaming id=$identifier (attempt=${attempt + 1})"
+                            )
+                            synced = true
+                        } catch (e: Exception) {
+                            if (attempt < 2) {
+                                delay(500L)
+                            } else {
+                                AppLogger.w(
+                                    TAG,
+                                    "setLocalTime failed after 3 attempts (${e.javaClass.simpleName}), " +
+                                        "PPI timestamps may fall back to system time",
+                                    e
+                                )
+                            }
+                        }
+                    }
+                    startSkinTempStreaming(identifier)
+                    startAccStreaming(identifier)
+                    startPpiStreaming(identifier)
+                }
             }
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA,
@@ -657,7 +781,29 @@ class PolarBleManager(
     }
 
     override fun batteryLevelReceived(identifier: String, level: Int) {
-        _batteryLevel.value = level
+        AppLogger.d(TAG, "batteryLevelReceived id=$identifier rawLevel=$level " +
+                "inputRange=[$batteryInputMin..$batteryInputMax]")
+        // 应用校准：将手表报告的值域映射到 0~100
+        val calibrated = if (batteryInputMin < batteryInputMax) {
+            ((level - batteryInputMin).toFloat() / (batteryInputMax - batteryInputMin) * 100f)
+                .toInt()
+                .coerceIn(0, 100)
+        } else {
+            level.coerceIn(0, 100)
+        }
+        AppLogger.d(TAG, "batteryLevelReceived id=$identifier calibratedLevel=$calibrated")
+        _batteryLevel.value = calibrated
+    }
+
+    override fun batteryChargingStatusReceived(identifier: String, chargingStatus: ChargeState) {
+        AppLogger.d(TAG, "batteryChargingStatusReceived id=$identifier status=$chargingStatus")
+    }
+
+    override fun powerSourcesStateReceived(identifier: String, powerSourcesState: PowerSourcesState) {
+        AppLogger.d(TAG, "powerSourcesStateReceived id=$identifier " +
+                "batteryPresent=${powerSourcesState.batteryPresent} " +
+                "wiredPower=${powerSourcesState.wiredExternalPowerConnected} " +
+                "wirelessPower=${powerSourcesState.wirelessExternalPowerConnected}")
     }
 
     override fun disInformationReceived(identifier: String, uuid: UUID, value: String) {

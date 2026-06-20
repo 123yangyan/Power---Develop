@@ -11,7 +11,9 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.owner.mindbody.MainActivity
+import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.R
+import kotlinx.coroutines.runBlocking
 
 /**
  * 前台服务：App 切到后台时保持 BLE 心率采集不被系统杀死。
@@ -47,6 +49,14 @@ class HrStreamService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        val app = applicationContext as? MindBodyApplication ?: return
+        runBlocking {
+            app.storage.flushAll()
+        }
     }
 
     private fun createChannel() {

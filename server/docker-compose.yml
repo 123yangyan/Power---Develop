@@ -7,6 +7,23 @@ services:
     networks:
       - internal
 
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: recorder
+      POSTGRES_USER: recorder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "recorder"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: ./backend
@@ -16,7 +33,10 @@ services:
     volumes:
       - api_data:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - internal
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
@@ -27,20 +47,44 @@ services:
       retries: 5
       start_period: 20s
 
-  worker:
+  # 每日 PostgreSQL 备份 → OSS（凌晨 03:00 UTC 执行）
+  backup:
     build:
       context: ./backend
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://recorder:${POSTGRES_PASSWORD:-changeme}@postgres:5432/recorder
+    entrypoint: >
+      sh -c "echo '0 3 * * * cd /opt/timedrecorder && python scripts/backup-pg.py >> /var/log/pg-backup.log 2>&1' > /etc/cron.d/pg-backup &&
+             chmod 0644 /etc/cron.d/pg-backup &&
+             touch /var/log/pg-backup.log &&
+             cron && tail -f /var/log/pg-backup.log"
     volumes:
-      - api_data:/data
+      - ./scripts:/opt/timedrecorder/scripts:ro
+      - ./backend:/opt/timedrecorder/backend:ro
     depends_on:
-      - redis
-      - api
+      postgres:
+        condition: service_healthy
     networks:
       - internal
-    command: python -m app.worker
+
+  # worker 已停用 — 由本地 RTX 4060 Worker 替代云端 DashScope 处理
+  # worker:
+  #   build:
+  #     context: ./backend
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - api_data:/data
+  #   depends_on:
+  #     - redis
+  #     - api
+  #   networks:
+  #     - internal
+  #   command: python -m app.worker
 
   nginx:
     image: nginx:1.27-alpine
@@ -63,3 +107,4 @@ networks:
 volumes:
   redis_data:
   api_data:
+  postgres_data:

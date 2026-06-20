@@ -6,13 +6,17 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 import redis
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.auth import verify_api_key
 from app.config import get_settings
-from app.database import get_db, init_db
+from app.database import SessionLocal, get_db, init_db
 from app.models import AudioFile
+from app.vitals_api import router as vitals_router
 # oss_client 延迟导入，避免 OSS 配置错误导致 API 无法启动
 from app.schemas import (
     ApiResponse,
@@ -33,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TimedRecorder API", version="1.0.0")
 
+# 身心数据 API
+app.include_router(vitals_router)
+
 
 @lru_cache
 def get_redis():
@@ -43,7 +50,20 @@ def get_redis():
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    _start_aggregation_scheduler()
     logger.info("API started")
+
+
+@app.get("/dashboard")
+@app.get("/dashboard/")
+def dashboard_page():
+    """返回身心交织看板单页（由 FastAPI 提供，避免 nginx alias 500）。"""
+    from pathlib import Path
+
+    html_path = Path(__file__).parent / "static" / "dashboard.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="dashboard.html not found")
+    return FileResponse(str(html_path), media_type="text/html")
 
 
 @app.get("/api/health")
@@ -221,3 +241,33 @@ def submit_result(request: SubmitResultRequest, db: Session = Depends(get_db)):
     return success(
         SubmitResultData(fileId=request.fileId, status=record.status)
     )
+
+
+# ---------- APScheduler：降采样聚合定时任务 ----------
+
+_scheduler: BackgroundScheduler | None = None
+
+
+def _start_aggregation_scheduler() -> None:
+    """启动 APScheduler，每天凌晨 02:00 UTC 执行 A 组降采样聚合。"""
+    global _scheduler
+    from app.agg_job import run_hourly_aggregation
+
+    def _job() -> None:
+        db = SessionLocal()
+        try:
+            run_hourly_aggregation(db)
+        except Exception:
+            logger.exception("Aggregation job failed")
+        finally:
+            db.close()
+
+    _scheduler = BackgroundScheduler(timezone="UTC")
+    _scheduler.add_job(
+        _job,
+        trigger=CronTrigger(hour=2, minute=0),
+        id="hourly_aggregation",
+        replace_existing=True,
+    )
+    _scheduler.start()
+    logger.info("APScheduler started: hourly_aggregation at 02:00 UTC daily")

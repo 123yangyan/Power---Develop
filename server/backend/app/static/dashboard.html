@@ -1,0 +1,1041 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>身心交织看板 · MindBody Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1923; color: #e0e6ed; }
+.header { padding: 16px 24px; background: #1a2a3a; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid #2a3a4a; }
+.header h1 { font-size: 20px; font-weight: 600; color: #7ec8a0; }
+.header select, .header input, .header button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a5a; background: #1a2a3a; color: #e0e6ed; font-size: 13px; }
+.header button { cursor: pointer; background: #2a5a4a; border-color: #3a7a5a; }
+.header button:hover { background: #3a7a5a; }
+.tabs { display: flex; gap: 0; padding: 0 24px; background: #1a2a3a; border-bottom: 1px solid #2a3a4a; }
+.tab-btn { padding: 10px 20px; background: none; border: none; color: #8a9aaa; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; transition: all .2s; }
+.tab-btn.active { color: #7ec8a0; border-bottom-color: #7ec8a0; }
+.tab-btn:hover { color: #c0d0e0; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 24px; }
+.chart-box { background: #1a2a3a; border-radius: 10px; padding: 12px; min-height: 320px; }
+.chart-box.full { grid-column: 1 / -1; min-height: 420px; }
+.chart-box h3 { font-size: 14px; color: #8a9aaa; margin-bottom: 8px; font-weight: 500; }
+.chart { width: 100%; height: 300px; }
+.chart.tall { height: 400px; }
+.chart.full-height { height: 500px; }
+.loading { text-align: center; padding: 40px; color: #6a7a8a; }
+.api-config { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.api-config input { width: 140px; }
+.mood-entry { padding: 8px 0; border-bottom: 1px solid #2a3a4a; font-size: 13px; }
+.stats-summary { display: flex; gap: 24px; padding: 16px 24px; flex-wrap: wrap; }
+.stats-summary .stat-item { background: #1a2a3a; border-radius: 8px; padding: 14px 20px; text-align: center; min-width: 120px; }
+.stats-summary .stat-item .val { font-size: 28px; font-weight: 700; color: #7ec8a0; }
+.stats-summary .stat-item .lbl { font-size: 12px; color: #6a7a8a; margin-top: 4px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding: 0 24px 24px; }
+.stat-card { background: #1a2a3a; border-radius: 10px; padding: 14px; border-left: 3px solid #2a3a4a; }
+.stat-card.group-a { border-left-color: #e85d75; }
+.stat-card.group-b { border-left-color: #f0a060; }
+.stat-card.group-c { border-left-color: #7ec8a0; }
+.stat-card .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.stat-card .card-table { font-size: 14px; font-weight: 600; color: #e0e6ed; word-break: break-all; }
+.stat-card .card-group { font-size: 10px; color: #4a5a6a; background: #0f1923; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.stat-card .card-meta { display: flex; gap: 16px; font-size: 12px; color: #6a7a8a; margin-bottom: 8px; flex-wrap: wrap; }
+.stat-card .card-meta span { white-space: nowrap; }
+.stat-card .card-meta .val-highlight { color: #7ec8a0; font-weight: 600; }
+.stat-card .card-mini-chart { width: 100%; height: 60px; }
+.stat-group-title { padding: 20px 24px 8px; font-size: 13px; color: #6a7a8a; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.stats-empty { text-align: center; padding: 60px 24px; color: #4a5a6a; font-size: 14px; }
+.stat-card .card-actions { margin-top: 10px; display: flex; justify-content: flex-end; }
+.stat-card .btn-view-rows { padding: 5px 12px; border-radius: 6px; border: 1px solid #3a7a5a; background: #2a5a4a; color: #e0e6ed; font-size: 12px; cursor: pointer; }
+.stat-card .btn-view-rows:hover:not(:disabled) { background: #3a7a5a; }
+.stat-card .btn-view-rows:disabled { opacity: 0.4; cursor: not-allowed; border-color: #3a4a5a; background: #1a2a3a; }
+.drawer-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.55); align-items: center; justify-content: center; padding: 24px; }
+.drawer-overlay.open { display: flex; }
+.drawer-panel { width: min(1200px, 100%); max-height: 90vh; background: #1a2a3a; border: 1px solid #2a3a4a; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.45); }
+.drawer-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #2a3a4a; flex-wrap: wrap; }
+.drawer-title { font-size: 16px; font-weight: 600; color: #7ec8a0; }
+.drawer-subtitle { font-size: 12px; color: #6a7a8a; margin-top: 2px; }
+.drawer-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drawer-controls button { padding: 5px 12px; border-radius: 6px; border: 1px solid #3a4a5a; background: #0f1923; color: #e0e6ed; font-size: 12px; cursor: pointer; }
+.drawer-controls button:hover:not(:disabled) { background: #2a3a4a; }
+.drawer-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.drawer-controls .btn-close { border-color: #5a3a3a; background: #3a2a2a; }
+.drawer-controls .btn-close:hover { background: #5a3a3a; }
+.drawer-page-info { font-size: 12px; color: #8a9aaa; min-width: 72px; text-align: center; }
+.drawer-body { flex: 1; overflow: auto; padding: 0; }
+.drawer-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.drawer-table th, .drawer-table td { padding: 8px 12px; border-bottom: 1px solid #2a3a4a; text-align: left; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.drawer-table th { position: sticky; top: 0; background: #0f1923; color: #8a9aaa; font-weight: 600; z-index: 1; }
+.drawer-table tbody tr:hover { background: #243040; }
+.drawer-table td.null-val { color: #4a5a6a; font-style: italic; }
+.drawer-loading, .drawer-empty { padding: 48px 24px; text-align: center; color: #6a7a8a; font-size: 14px; }
+.drawer-truncated { padding: 8px 18px; font-size: 11px; color: #f0a060; background: #2a2418; border-top: 1px solid #3a3a2a; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>身心交织看板</h1>
+  <select id="deviceSelect" onchange="refreshAll()"><option value="">选择设备...</option></select>
+  <select id="timePreset" onchange="refreshAll()">
+    <option value="1h">最近 1 小时</option>
+    <option value="6h">最近 6 小时</option>
+    <option value="24h" selected>最近 24 小时</option>
+    <option value="3d">最近 3 天</option>
+    <option value="7d">最近 7 天</option>
+    <option value="30d">最近 30 天</option>
+  </select>
+  <div class="api-config">
+    <input id="apiKeyInput" type="password" placeholder="API Key（自动保存到本机）" oninput="saveApiKey()" onchange="onApiKeyChange()">
+    <button onclick="refreshAll()">刷新</button>
+  </div>
+  <span id="status" style="font-size:12px;color:#6a7a8a"></span>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="curve" onclick="switchTab('curve')">身心交织曲线</button>
+  <button class="tab-btn" data-tab="sleep" onclick="switchTab('sleep')">睡眠分析</button>
+  <button class="tab-btn" data-tab="activity" onclick="switchTab('activity')">运动活动</button>
+  <button class="tab-btn" data-tab="acc" onclick="switchTab('acc')">体能活动</button>
+  <button class="tab-btn" data-tab="mood" onclick="switchTab('mood')">情绪日历</button>
+  <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">数据存储总览</button>
+</div>
+
+<div id="tab-curve">
+  <div class="grid">
+    <div class="chart-box full"><h3>HR · 皮肤温度 · HRV (RMSSD) 身心交织曲线</h3><div id="chart-curve" class="chart tall"></div></div>
+    <div class="chart-box"><h3>心率分布</h3><div id="chart-hr-dist" class="chart"></div></div>
+    <div class="chart-box"><h3>最近心情记录</h3><div id="recent-moods" style="max-height:300px;overflow-y:auto"></div></div>
+  </div>
+</div>
+
+<div id="tab-sleep" style="display:none">
+  <div class="grid">
+    <div class="chart-box full"><h3>睡眠时长趋势</h3><div id="chart-sleep-duration" class="chart tall"></div></div>
+    <div class="chart-box"><h3>睡眠阶段分布（最近一晚）</h3><div id="chart-sleep-stages" class="chart"></div></div>
+    <div class="chart-box"><h3>睡眠评分 vs 次日情绪</h3><div id="chart-sleep-mood" class="chart"></div></div>
+  </div>
+</div>
+
+<div id="tab-activity" style="display:none">
+  <div class="grid">
+    <div class="chart-box full"><h3>步数日趋势</h3><div id="chart-steps" class="chart tall"></div></div>
+    <div class="chart-box"><h3>卡路里组成</h3><div id="chart-calories" class="chart"></div></div>
+    <div class="chart-box"><h3>活动分钟分布</h3><div id="chart-activity-heat" class="chart"></div></div>
+  </div>
+</div>
+
+<div id="tab-acc" style="display:none">
+  <div class="grid">
+    <div class="chart-box full"><h3>24 小时 ACC 活动强度分布</h3><div id="chart-acc-hour" class="chart tall"></div></div>
+    <div class="chart-box"><h3>活动等级时间占比</h3><div id="chart-acc-level" class="chart"></div></div>
+    <div class="chart-box"><h3>ACC 幅度 × 心率双轴对比</h3><div id="chart-acc-hr" class="chart"></div></div>
+  </div>
+</div>
+
+<div id="tab-mood" style="display:none">
+  <div class="grid">
+    <div class="chart-box full"><h3>月度情绪热力图</h3><div id="chart-mood-calendar" class="chart full-height"></div></div>
+    <div class="chart-box"><h3>情绪角色分布</h3><div id="chart-mood-roles" class="chart"></div></div>
+    <div class="chart-box"><h3>情绪日记列表</h3><div id="mood-list" style="max-height:300px;overflow-y:auto"></div></div>
+  </div>
+</div>
+
+<div id="tab-stats" style="display:none">
+  <div id="stats-summary-row" class="stats-summary"></div>
+  <div id="stats-cards-container"></div>
+</div>
+
+<div id="table-drawer" class="drawer-overlay" onclick="if(event.target===this)closeTableDrawer()">
+  <div class="drawer-panel" onclick="event.stopPropagation()">
+    <div class="drawer-header">
+      <div>
+        <div id="drawer-table-name" class="drawer-title">表名</div>
+        <div id="drawer-table-meta" class="drawer-subtitle"></div>
+      </div>
+      <div class="drawer-controls">
+        <button id="drawer-prev" onclick="drawerPrevPage()">&lt; 上一页</button>
+        <span id="drawer-page-info" class="drawer-page-info">第 1/1 页</span>
+        <button id="drawer-next" onclick="drawerNextPage()">下一页 &gt;</button>
+        <button class="btn-close" onclick="closeTableDrawer()">关闭</button>
+      </div>
+    </div>
+    <div id="drawer-body" class="drawer-body">
+      <div class="drawer-loading">加载中...</div>
+    </div>
+    <div id="drawer-truncated" class="drawer-truncated" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+var API_KEY = "";
+var charts = {};
+var currentTab = "curve";
+
+function api(path) {
+  var headers = {};
+  if (API_KEY) headers["Authorization"] = "Bearer " + API_KEY;
+  return fetch(path, { headers: headers }).then(function(r) { return r.json(); });
+}
+
+function initCharts() {
+  charts.curve = echarts.init(document.getElementById("chart-curve"));
+  charts.hrDist = echarts.init(document.getElementById("chart-hr-dist"));
+  charts.sleepDur = echarts.init(document.getElementById("chart-sleep-duration"));
+  charts.sleepStages = echarts.init(document.getElementById("chart-sleep-stages"));
+  charts.sleepMood = echarts.init(document.getElementById("chart-sleep-mood"));
+  charts.steps = echarts.init(document.getElementById("chart-steps"));
+  charts.calories = echarts.init(document.getElementById("chart-calories"));
+  charts.activityHeat = echarts.init(document.getElementById("chart-activity-heat"));
+  charts.moodCal = echarts.init(document.getElementById("chart-mood-calendar"));
+  charts.moodRoles = echarts.init(document.getElementById("chart-mood-roles"));
+  charts.accHour = echarts.init(document.getElementById("chart-acc-hour"));
+  charts.accLevel = echarts.init(document.getElementById("chart-acc-level"));
+  charts.accHr = echarts.init(document.getElementById("chart-acc-hr"));
+  window.addEventListener("resize", function() {
+    Object.values(charts).forEach(function(c) { c.resize(); });
+  });
+}
+
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+  var targetBtn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
+  if (targetBtn) targetBtn.classList.add("active");
+  document.querySelectorAll('[id^="tab-"]').forEach(function(d) { d.style.display = "none"; });
+  var targetDiv = document.getElementById("tab-" + name);
+  if (targetDiv) targetDiv.style.display = "";
+  setTimeout(function() { Object.values(charts).forEach(function(c) { if (c && !c.isDisposed()) c.resize(); }); }, 100);
+  loadTab(name);
+}
+
+function saveApiKey() {
+  var key = document.getElementById("apiKeyInput").value.trim();
+  API_KEY = key;
+  if (key) {
+    localStorage.setItem("mb_api_key", key);
+  } else {
+    localStorage.removeItem("mb_api_key");
+  }
+}
+
+function onApiKeyChange() {
+  saveApiKey();
+  loadDevices();
+}
+
+function getTimeRange() {
+  var preset = document.getElementById("timePreset").value;
+  var now = Date.now();
+  var hours = { "1h":1, "6h":6, "24h":24, "3d":72, "7d":168, "30d":720 }[preset] || 24;
+  return { from: now - hours * 3600000, to: now };
+}
+
+async function loadDevices() {
+  try {
+    var r = await api("/api/vitals/devices");
+    var sel = document.getElementById("deviceSelect");
+    sel.innerHTML = '<option value="">选择设备...</option>';
+    if (r.code === 0 && r.data) {
+      r.data.forEach(function(d) {
+        sel.innerHTML += '<option value="' + d.deviceId + '">' + d.deviceId + '</option>';
+      });
+      if (r.data.length > 0) { sel.value = r.data[0].deviceId; loadTab(currentTab); }
+    }
+  } catch(e) { console.error(e); }
+}
+
+function refreshAll() {
+  saveApiKey();
+  Object.values(charts).forEach(function(c) { c.clear(); });
+  loadTab(currentTab);
+}
+
+function loadTab(name) {
+  var fn = { curve: loadCurve, sleep: loadSleep, activity: loadActivity, acc: loadAccActivity, mood: loadMood, stats: loadStats }[name];
+  if (fn) fn();
+}
+
+// ---- Tab: Curve ----
+async function loadCurve() {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) return;
+  var tr = getTimeRange();
+  document.getElementById("status").textContent = "加载中...";
+  try {
+    var r = await api("/api/vitals/series?device=" + dev + "&from_=" + tr.from + "&to_=" + tr.to + "&tables=hr_samples,skin_temp_samples,ppi_samples,mood_entries&maxPoints=500");
+    if (r.code !== 0 || !r.data) return;
+    var series = r.data.series || [];
+    var hrS = series.find(function(s) { return s.table === "hr_samples"; });
+    var tempS = series.find(function(s) { return s.table === "skin_temp_samples"; });
+    var ppiS = series.find(function(s) { return s.table === "ppi_samples"; });
+    var moodS = series.find(function(s) { return s.table === "mood_entries_coord_x"; });
+
+    var hrData = (hrS && hrS.points || []).map(function(p) { return [p.ts, p.value]; });
+    var tempData = (tempS && tempS.points || []).map(function(p) { return [p.ts, p.value]; });
+    var hrvData = computeRMSSD(ppiS && ppiS.points || []);
+    var moodPts = (moodS && moodS.points || []).map(function(p) { return { name: "心情", value: [p.ts, p.value] }; });
+
+    charts.curve.setOption({
+      tooltip: { trigger: "axis" },
+      legend: { data: ["HR (bpm)", "皮肤温度 (C)", "HRV (RMSSD ms)"], textStyle: { color: "#8a9aaa" }, top: 0 },
+      grid: { left: 60, right: 60, top: 40, bottom: 30 },
+      xAxis: { type: "time", axisLabel: { color: "#6a7a8a" } },
+      yAxis: [
+        { type: "value", name: "bpm / ms", axisLabel: { color: "#6a7a8a" } },
+        { type: "value", name: "C", axisLabel: { color: "#6a7a8a" } }
+      ],
+      series: [
+        { name: "HR (bpm)", type: "line", smooth: true, symbol: "none", data: hrData, lineStyle: { color: "#e85d75", width: 2 } },
+        { name: "皮肤温度 (C)", type: "line", smooth: true, symbol: "none", yAxisIndex: 1, data: tempData, lineStyle: { color: "#f0a060", width: 2 } },
+        { name: "HRV (RMSSD ms)", type: "line", smooth: true, symbol: "none", data: hrvData, lineStyle: { color: "#7ec8a0", width: 2 } }
+      ]
+    }, true);
+
+    var hrVals = hrData.map(function(p) { return p[1]; });
+    var bins = [40,60,70,80,90,100,120,140,180];
+    var histData = bins.map(function(b, i) {
+      var upper = bins[i+1] || 999;
+      return hrVals.filter(function(v) { return v >= b && v < upper; }).length;
+    });
+    charts.hrDist.setOption({
+      tooltip: { trigger: "axis" },
+      grid: { left: 50, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: "category", data: bins.map(function(b,i) { return b + ((bins[i+1]) ? "-"+bins[i+1] : "+"); }), axisLabel: { color:"#6a7a8a", fontSize:10 } },
+      yAxis: { type: "value", axisLabel: { color:"#6a7a8a" } },
+      series: [{ type: "bar", data: histData, itemStyle: { color: "#e85d75" } }]
+    }, true);
+
+    var moodsDiv = document.getElementById("recent-moods");
+    if (moodS && moodS.points && moodS.points.length) {
+      moodsDiv.innerHTML = moodS.points.slice(-10).reverse().map(function(p) {
+        return '<div class="mood-entry">' + new Date(p.ts).toLocaleString() + ' · 情绪值: ' + p.value.toFixed(1) + '</div>';
+      }).join("");
+    } else {
+      moodsDiv.innerHTML = '<div class="loading">暂无心情数据</div>';
+    }
+    document.getElementById("status").textContent = "已加载";
+  } catch(e) { console.error(e); document.getElementById("status").textContent = "加载失败"; }
+}
+
+function computeRMSSD(ppiPoints) {
+  if (ppiPoints.length < 2) return [];
+  var result = [];
+  for (var i = 5; i < ppiPoints.length; i++) {
+    var ss = 0, n = 0;
+    for (var j = Math.max(0, i-5); j < i; j++) {
+      var diff = ppiPoints[j+1].value - ppiPoints[j].value;
+      ss += diff * diff;
+      n++;
+    }
+    if (n > 1) result.push([ppiPoints[i].ts, Math.round(Math.sqrt(ss / n))]);
+  }
+  return result;
+}
+
+// ---- Tab: Sleep ----
+async function loadSleep() {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) return;
+  var tr = getTimeRange();
+  document.getElementById("status").textContent = "加载中...";
+  try {
+    var r = await api("/api/vitals/series?device=" + dev + "&from_=" + tr.from + "&to_=" + tr.to + "&tables=sleep_sessions&maxPoints=200");
+    if (r.code !== 0 || !r.data) return;
+    var sleepS = r.data.series.find(function(s) { return s.table === "sleep_sessions"; });
+    var pts = sleepS && sleepS.points || [];
+    charts.sleepDur.setOption({
+      tooltip: { trigger: "axis", formatter: function(p) { return new Date(p[0].value[0]).toLocaleDateString() + ": " + Math.round(p[0].value[1]/60000) + " 分钟"; } },
+      grid: { left: 50, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: "time", axisLabel: { color:"#6a7a8a" } },
+      yAxis: { type: "value", name: "分钟", axisLabel: { color:"#6a7a8a" } },
+      series: [{ type: "bar", data: pts.map(function(p) { return [p.ts, p.value]; }), itemStyle: { color: "#7ec8a0" } }]
+    }, true);
+
+    // Sleep stages — fetch raw sleep_sessions for the most recent session
+    try {
+      var sleepR = await api("/api/vitals/table-rows?device=" + dev + "&table=sleep_sessions&from_=" + tr.from + "&to_=" + tr.to + "&limit=5");
+      if (sleepR.code === 0 && sleepR.data) renderSleepStages(sleepR.data);
+    } catch(e) { console.error("sleep stages fetch:", e); }
+
+    charts.sleepMood.setOption({
+      title: { text: "连接设备后可查看睡眠-情绪对照", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} }
+    }, true);
+    document.getElementById("status").textContent = "已加载";
+  } catch(e) { console.error(e); document.getElementById("status").textContent = "加载失败"; }
+}
+
+function renderSleepStages(data) {
+  // Find the most recent row that has sleep_wake_phases_json
+  var cols = data.columns;
+  var idxJson = cols.indexOf("sleep_wake_phases_json");
+  var idxTs = cols.indexOf("ts");
+  if (idxJson < 0) {
+    charts.sleepStages.setOption({ title: { text: "暂无睡眠阶段数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  var phasesJson = null;
+  var rows = data.rows || [];
+  // Find last row with non-null phases JSON
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][idxJson]) { phasesJson = rows[i][idxJson]; break; }
+  }
+
+  if (!phasesJson) {
+    charts.sleepStages.setOption({ title: { text: "暂无睡眠阶段数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  var phases;
+  try { phases = JSON.parse(phasesJson); } catch(e) { phases = null; }
+  if (!phases || !Array.isArray(phases) || phases.length === 0) {
+    charts.sleepStages.setOption({ title: { text: "睡眠阶段数据为空", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  // Aggregate duration by phase type (handle multiple JSON formats)
+  var phaseMap = {};
+  var phaseColors = { "DEEP_SLEEP": "#4a7af0", "LIGHT_SLEEP": "#7ec8a0", "REM_SLEEP": "#e85d75", "WAKE": "#f0a060", "DEEP": "#4a7af0", "LIGHT": "#7ec8a0", "REM": "#e85d75" };
+  var phaseLabels = { "DEEP_SLEEP": "深睡", "LIGHT_SLEEP": "浅睡", "REM_SLEEP": "REM", "WAKE": "清醒", "DEEP": "深睡", "LIGHT": "浅睡", "REM": "REM" };
+
+  phases.forEach(function(p) {
+    var type = p.type || p.phase || p.stage || "未知";
+    // Duration: try various field names, convert ms→minutes if needed
+    var dur = p.durationSeconds || p.duration_seconds || p.duration || 0;
+    if (p.endSeconds && p.startSeconds !== undefined) dur = (p.endSeconds - p.startSeconds);
+    if (p.end && p.start) dur = (p.end - p.start);
+    // If value looks like milliseconds (>10000), convert to minutes
+    if (dur > 10000) dur = Math.round(dur / 60000);
+    else if (dur > 500) dur = Math.round(dur / 60); // seconds → minutes
+    dur = Math.round(dur);
+    if (dur <= 0) return;
+    phaseMap[type] = (phaseMap[type] || 0) + dur;
+  });
+
+  var phaseNames = Object.keys(phaseMap);
+  if (phaseNames.length === 0) {
+    charts.sleepStages.setOption({ title: { text: "无法解析睡眠阶段", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  var pieData = phaseNames.map(function(name) {
+    return { name: phaseLabels[name] || name, value: phaseMap[name], itemStyle: { color: phaseColors[name] || undefined } };
+  });
+
+  charts.sleepStages.setOption({
+    tooltip: { trigger: "item", formatter: "{b}: {c} 分钟 ({d}%)" },
+    legend: { orient: "vertical", right: 10, top: "center", textStyle: { color: "#8a9aaa", fontSize: 11 } },
+    series: [{
+      type: "pie",
+      radius: ["45%", "70%"],
+      center: ["40%", "50%"],
+      data: pieData,
+      label: { color: "#8a9aaa", fontSize: 10, formatter: "{b}\n{d}%" },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } }
+    }]
+  }, true);
+}
+
+// ---- Tab: Activity ----
+async function loadActivity() {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) return;
+  var tr = getTimeRange();
+  document.getElementById("status").textContent = "加载中...";
+  try {
+    var r = await api("/api/vitals/series?device=" + dev + "&from_=" + tr.from + "&to_=" + tr.to + "&tables=activity_minute_samples,activity_day_summary&maxPoints=200");
+    if (r.code !== 0 || !r.data) return;
+    var actS = r.data.series.find(function(s) { return s.table === "activity_minute_samples"; });
+    var dayS = r.data.series.find(function(s) { return s.table === "activity_day_summary"; });
+    var pts = actS && actS.points || [];
+    // 优先用日汇总（dayS，ts 修复后每天 UTC 00:00），降级到分钟样本累积
+    var stepsData = (dayS && dayS.points && dayS.points.length > 0)
+      ? dayS.points.map(function(p) { return [p.ts, p.value]; })
+      : pts.map(function(p) { return [p.ts, p.value]; });
+    charts.steps.setOption({
+      tooltip: { trigger: "axis" },
+      grid: { left: 50, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: "time", axisLabel: { color:"#6a7a8a" } },
+      yAxis: { type: "value", name: "步数", axisLabel: { color:"#6a7a8a" } },
+      series: [{ type: "bar", data: stepsData, itemStyle: { color: "#f0a060" } }]
+    }, true);
+
+    // Calories stacked bar — fetch raw activity_day_summary rows
+    try {
+      var calR = await api("/api/vitals/table-rows?device=" + dev + "&table=activity_day_summary&from_=" + tr.from + "&to_=" + tr.to + "&limit=200");
+      if (calR.code === 0 && calR.data) renderCaloriesStacked(calR.data);
+    } catch(e) { console.error("calories fetch:", e); }
+
+    // Activity heatmap — fetch raw activity_minute_samples rows
+    try {
+      var heatR = await api("/api/vitals/table-rows?device=" + dev + "&table=activity_minute_samples&from_=" + tr.from + "&to_=" + tr.to + "&limit=5000");
+      if (heatR.code === 0 && heatR.data) renderActivityHeatmap(heatR.data);
+    } catch(e) { console.error("heatmap fetch:", e); }
+
+    document.getElementById("status").textContent = "已加载";
+  } catch(e) { console.error(e); document.getElementById("status").textContent = "加载失败"; }
+}
+
+function renderCaloriesStacked(data) {
+  // data.columns: ["ts", "steps", "active_time_minutes", "calories_total", "calories_activity", "calories_training", "calories_bmr"]
+  // data.rows: [[ts, steps, active_time, cal_total, cal_act, cal_train, cal_bmr], ...]
+  var cols = data.columns;
+  var idxTs = cols.indexOf("ts");
+  var idxAct = cols.indexOf("calories_activity");
+  var idxTrain = cols.indexOf("calories_training");
+  var idxBmr = cols.indexOf("calories_bmr");
+  if (idxAct < 0 || idxTrain < 0 || idxBmr < 0) {
+    charts.calories.setOption({ title: { text: "暂无卡路里细分数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  // Aggregate by day
+  var dayMap = {};
+  (data.rows || []).forEach(function(r) {
+    var day = new Date(r[idxTs]).toISOString().substring(0, 10);
+    if (!dayMap[day]) dayMap[day] = { act: 0, train: 0, bmr: 0 };
+    dayMap[day].act += (r[idxAct] || 0);
+    dayMap[day].train += (r[idxTrain] || 0);
+    dayMap[day].bmr += (r[idxBmr] || 0);
+  });
+  var days = Object.keys(dayMap).sort();
+  var actData = days.map(function(d) { return dayMap[d].act; });
+  var trainData = days.map(function(d) { return dayMap[d].train; });
+  var bmrData = days.map(function(d) { return dayMap[d].bmr; });
+
+  if (days.length === 0) {
+    charts.calories.setOption({ title: { text: "暂无卡路里数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  charts.calories.setOption({
+    tooltip: { trigger: "axis", formatter: function(ps) { return ps.map(function(p){return p.seriesName+": "+p.value+" kcal";}).join("<br>"); } },
+    legend: { data: ["活动消耗", "训练消耗", "基础代谢"], textStyle: { color: "#8a9aaa", fontSize: 11 }, top: 0 },
+    grid: { left: 50, right: 20, top: 35, bottom: 30 },
+    xAxis: { type: "category", data: days.map(function(d) { return d.substring(5); }), axisLabel: { color:"#6a7a8a", fontSize: 10 } },
+    yAxis: { type: "value", name: "kcal", axisLabel: { color:"#6a7a8a" } },
+    series: [
+      { name: "活动消耗", type: "bar", stack: "cal", data: actData, itemStyle: { color: "#e85d75" }, barMaxWidth: 32 },
+      { name: "训练消耗", type: "bar", stack: "cal", data: trainData, itemStyle: { color: "#f0a060" }, barMaxWidth: 32 },
+      { name: "基础代谢", type: "bar", stack: "cal", data: bmrData, itemStyle: { color: "#4a7af0" }, barMaxWidth: 32 }
+    ]
+  }, true);
+}
+
+function renderActivityHeatmap(data) {
+  // data.columns: ["ts", "steps", "met_x100", "activity_level"]
+  var cols = data.columns;
+  var idxTs = cols.indexOf("ts");
+  var idxLevel = cols.indexOf("activity_level");
+  if (idxLevel < 0) {
+    charts.activityHeat.setOption({ title: { text: "暂无活动级别数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  // Build heatmap: hour (0-23) x activity_level (0-5), count of minutes
+  var levelNames = ["睡眠", "休息", "静坐", "轻度", "中度", "高强度"];
+  var hourBuckets = {};
+  for (var h = 0; h < 24; h++) { hourBuckets[h] = {}; for (var l = 0; l <= 5; l++) hourBuckets[h][l] = 0; }
+
+  (data.rows || []).forEach(function(r) {
+    var ts = r[idxTs];
+    var level = r[idxLevel];
+    if (ts == null || level == null) return;
+    var hour = new Date(ts).getHours();
+    level = Math.min(5, Math.max(0, Math.round(level)));
+    hourBuckets[hour][level] = (hourBuckets[hour][level] || 0) + 1;
+  });
+
+  var heatData = [];
+  for (var h = 0; h < 24; h++) {
+    for (var l = 0; l <= 5; l++) {
+      if (hourBuckets[h][l] > 0) heatData.push([h, l, hourBuckets[h][l]]);
+    }
+  }
+
+  if (heatData.length === 0) {
+    charts.activityHeat.setOption({ title: { text: "暂无活动分钟数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+
+  var maxCount = 1;
+  heatData.forEach(function(d) { if (d[2] > maxCount) maxCount = d[2]; });
+
+  charts.activityHeat.setOption({
+    tooltip: { formatter: function(p) { return p.value[0] + ":00 · " + levelNames[p.value[1]] + ": " + p.value[2] + " 分钟"; } },
+    grid: { left: 60, right: 30, top: 20, bottom: 30 },
+    xAxis: { type: "category", data: ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23"], name: "小时", axisLabel: { color:"#6a7a8a", fontSize: 9 } },
+    yAxis: { type: "category", data: levelNames, axisLabel: { color:"#6a7a8a", fontSize: 10 } },
+    visualMap: { min: 0, max: maxCount, inRange: { color: ["#1a2a3a","#2a4a3a","#4a7a4a","#7ec8a0","#a0e8c0"] }, show: false },
+    series: [{ type: "heatmap", data: heatData, label: { show: true, fontSize: 9, color: "#8a9aaa" } }]
+  }, true);
+}
+
+// ---- Tab: ACC 体能活动 ----
+async function loadAccActivity() {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) return;
+  var tr = getTimeRange();
+  document.getElementById("status").textContent = "加载中...";
+  try {
+    // 并行拉取三份数据
+    var [accRowsResp, actRowsResp, seriesResp] = await Promise.all([
+      api("/api/vitals/table-rows?device=" + encodeURIComponent(dev) + "&table=acc_minute_summary&from_=" + tr.from + "&to_=" + tr.to + "&limit=5000"),
+      api("/api/vitals/table-rows?device=" + encodeURIComponent(dev) + "&table=activity_minute_samples&from_=" + tr.from + "&to_=" + tr.to + "&limit=5000"),
+      api("/api/vitals/series?device=" + encodeURIComponent(dev) + "&from_=" + tr.from + "&to_=" + tr.to + "&tables=acc_minute_summary,hr_samples&maxPoints=300")
+    ]);
+
+    // ---- 图表一：24 小时 ACC 强度分布 ----
+    (function renderAccHour() {
+      if (accRowsResp.code !== 0 || !accRowsResp.data || !accRowsResp.data.rows.length) {
+        charts.accHour.setOption({ title: { text: "暂无 ACC 数据", left: "center", top: "center", textStyle: { color: "#6a7a8a", fontSize: 14 } } }, true);
+        return;
+      }
+      var cols = accRowsResp.data.columns;
+      var idxTs = cols.indexOf("ts");
+      var idxAvg = cols.indexOf("avg_magnitude_mg");
+      if (idxAvg < 0) return;
+
+      // 按小时聚合
+      var hourSum = new Array(24).fill(0);
+      var hourCnt = new Array(24).fill(0);
+      (accRowsResp.data.rows || []).forEach(function(r) {
+        var h = new Date(r[idxTs]).getHours();
+        var v = r[idxAvg];
+        if (v != null) { hourSum[h] += v; hourCnt[h]++; }
+      });
+      var hourAvg = hourSum.map(function(s, i) { return hourCnt[i] > 0 ? Math.round(s / hourCnt[i]) : 0; });
+      var maxVal = Math.max.apply(null, hourAvg) || 1;
+
+      charts.accHour.setOption({
+        tooltip: { trigger: "axis", formatter: function(ps) { return ps[0].name + ":00  " + ps[0].value + " mg"; } },
+        grid: { left: 50, right: 20, top: 20, bottom: 30 },
+        xAxis: { type: "category", data: Array.from({length:24}, function(_,i){ return i+""; }), name: "小时", axisLabel: { color: "#6a7a8a" } },
+        yAxis: { type: "value", name: "mg", axisLabel: { color: "#6a7a8a" } },
+        visualMap: { show: false, min: 0, max: maxVal, inRange: { color: ["#2a4a7a", "#4a8a9a", "#7ec8a0", "#f0c060", "#e85d75"] } },
+        series: [{ type: "bar", data: hourAvg, itemStyle: { color: function(p) {
+          var ratio = p.value / maxVal;
+          var colors = ["#2a4a7a","#4a8a9a","#7ec8a0","#f0c060","#e85d75"];
+          var idx = Math.min(4, Math.floor(ratio * 5));
+          return colors[idx];
+        } } }]
+      }, true);
+    })();
+
+    // ---- 图表二：活动等级时间占比 ----
+    (function renderAccLevel() {
+      if (actRowsResp.code !== 0 || !actRowsResp.data || !actRowsResp.data.rows.length) {
+        charts.accLevel.setOption({ title: { text: "暂无活动分钟数据", left: "center", top: "center", textStyle: { color: "#6a7a8a", fontSize: 14 } } }, true);
+        return;
+      }
+      var cols = actRowsResp.data.columns;
+      var idxLevel = cols.indexOf("activity_level");
+      if (idxLevel < 0) return;
+
+      var levelNames = ["睡眠", "休息", "静坐", "轻度", "中度", "高强度"];
+      var levelColors = ["#3a5a8a", "#4a7a9a", "#5aaaba", "#7ec8a0", "#f0c060", "#e85d75"];
+      var counts = new Array(6).fill(0);
+      (actRowsResp.data.rows || []).forEach(function(r) {
+        var lv = r[idxLevel];
+        if (lv != null) counts[Math.min(5, Math.max(0, Math.round(lv)))]++;
+      });
+
+      charts.accLevel.setOption({
+        tooltip: { trigger: "axis", formatter: function(ps) { return ps[0].name + ": " + ps[0].value + " 分钟"; } },
+        grid: { left: 80, right: 30, top: 20, bottom: 30 },
+        xAxis: { type: "value", name: "分钟", axisLabel: { color: "#6a7a8a" } },
+        yAxis: { type: "category", data: levelNames, axisLabel: { color: "#6a7a8a" } },
+        series: [{ type: "bar", data: counts, itemStyle: { color: function(p) { return levelColors[p.dataIndex]; } },
+          label: { show: true, position: "right", color: "#8a9aaa", formatter: function(p) { return p.value > 0 ? p.value + " min" : ""; } } }]
+      }, true);
+    })();
+
+    // ---- 图表三：ACC × HR 双轴折线 ----
+    (function renderAccHr() {
+      var empty = { title: { text: "暂无数据", left: "center", top: "center", textStyle: { color: "#6a7a8a", fontSize: 14 } } };
+      if (seriesResp.code !== 0 || !seriesResp.data) { charts.accHr.setOption(empty, true); return; }
+      var series = seriesResp.data.series || [];
+      var accS = series.find(function(s) { return s.table === "acc_minute_summary"; });
+      var hrS  = series.find(function(s) { return s.table === "hr_samples"; });
+      if ((!accS || !accS.points.length) && (!hrS || !hrS.points.length)) { charts.accHr.setOption(empty, true); return; }
+
+      var accData = (accS && accS.points || []).map(function(p) { return [p.ts, p.value]; });
+      var hrData  = (hrS  && hrS.points  || []).map(function(p) { return [p.ts, p.value]; });
+
+      charts.accHr.setOption({
+        tooltip: { trigger: "axis" },
+        legend: { data: ["ACC 幅度 (mg)", "心率 (bpm)"], textStyle: { color: "#8a9aaa" }, top: 0 },
+        grid: { left: 65, right: 65, top: 40, bottom: 30 },
+        xAxis: { type: "time", axisLabel: { color: "#6a7a8a" } },
+        yAxis: [
+          { type: "value", name: "bpm", position: "left",  axisLabel: { color: "#e85d75" }, axisLine: { lineStyle: { color: "#e85d75" } } },
+          { type: "value", name: "mg",  position: "right", axisLabel: { color: "#7ec8a0" }, axisLine: { lineStyle: { color: "#7ec8a0" } } }
+        ],
+        series: [
+          { name: "心率 (bpm)",    type: "line", smooth: true, symbol: "none", yAxisIndex: 0, data: hrData,  lineStyle: { color: "#e85d75", width: 2 } },
+          { name: "ACC 幅度 (mg)", type: "line", smooth: true, symbol: "none", yAxisIndex: 1, data: accData, lineStyle: { color: "#7ec8a0", width: 2 }, areaStyle: { color: "rgba(126,200,160,0.08)" } }
+        ]
+      }, true);
+    })();
+
+    document.getElementById("status").textContent = "已加载";
+  } catch(e) { console.error(e); document.getElementById("status").textContent = "加载失败"; }
+}
+
+// ---- Tab: Mood Calendar ----
+async function loadMood() {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) return;
+  var now = new Date();
+  try {
+    var r = await api("/api/vitals/mood-calendar?device=" + dev + "&year=" + now.getFullYear() + "&month=" + (now.getMonth()+1));
+    if (r.code !== 0 || !r.data) return;
+    var entries = r.data.entries || [];
+    var daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    var firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay() || 7;
+    var heatData = [];
+    var moodMap = {};
+    entries.forEach(function(e) { moodMap[e.date] = e; });
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var ds = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(d).padStart(2,"0");
+      var e = moodMap[ds];
+      var row = Math.floor((d + firstDay - 2) / 7);
+      var col = (d + firstDay - 2) % 7;
+      heatData.push([col, row, e ? e.coord_x : "-"]);
+    }
+
+    charts.moodCal.setOption({
+      tooltip: { formatter: function(p) { return p.value[2] !== "-" ? "情绪值(valence): " + p.value[2] : "无记录"; } },
+      grid: { left: 30, right: 20, top: 20, bottom: 20 },
+      xAxis: { type: "category", data: ["一","二","三","四","五","六","日"], axisLabel: { color:"#6a7a8a" } },
+      yAxis: { type: "value", inverse: true, axisLabel: { show: false }, splitLine: { show: false } },
+      visualMap: { min: -4, max: 4, inRange: { color: ["#4a7af0","#2a3a4a","#e85d75"] }, show: false },
+      series: [{
+        type: "heatmap",
+        data: heatData.filter(function(d) { return d[2] !== "-"; }),
+        label: { show: true, formatter: function(p) { return String(Math.floor((p.value[1]||0)*7 + (p.value[0]||0) + 1)); }, fontSize: 10, color: "#8a9aaa" }
+      }]
+    }, true);
+
+    // Render role distribution pie from role_id
+    renderMoodRoles(entries);
+
+    var listDiv = document.getElementById("mood-list");
+    if (entries.length) {
+      listDiv.innerHTML = entries.slice(0, 20).map(function(e) {
+        return '<div class="mood-entry"><strong>' + e.date + '</strong> · 坐标(' + e.coord_x + ',' + e.coord_y + ') ' + (e.role_id||"") + (e.fact ? '<br><span style="color:#8a9aaa">' + e.fact.substring(0,80) + '</span>' : "") + '</div>';
+      }).join("");
+    } else {
+      listDiv.innerHTML = '<div class="loading">本月暂无心情记录</div>';
+    }
+  } catch(e) { console.error(e); }
+}
+
+function renderMoodRoles(entries) {
+  if (!entries || !entries.length) {
+    charts.moodRoles.setOption({ title: { text: "暂无情绪角色数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+  var roleMap = {};
+  entries.forEach(function(e) {
+    var role = e.role_id || "未标记";
+    roleMap[role] = (roleMap[role] || 0) + 1;
+  });
+  var roleNames = Object.keys(roleMap);
+  if (roleNames.length === 0) {
+    charts.moodRoles.setOption({ title: { text: "暂无情绪角色数据", left:"center", top:"center", textStyle:{color:"#6a7a8a",fontSize:14} } }, true);
+    return;
+  }
+  var colors = ["#e85d75","#f0a060","#7ec8a0","#4a7af0","#a07ec8","#e0c060","#60c0c0","#c080a0","#80a0c0","#a0c080"];
+  var pieData = roleNames.map(function(name, i) {
+    return { name: name, value: roleMap[name], itemStyle: { color: colors[i % colors.length] } };
+  });
+
+  charts.moodRoles.setOption({
+    tooltip: { trigger: "item", formatter: "{b}: {c} 次 ({d}%)" },
+    legend: { type: "scroll", orient: "horizontal", bottom: 0, textStyle: { color: "#8a9aaa", fontSize: 10 } },
+    series: [{
+      type: "pie",
+      radius: ["40%", "65%"],
+      center: ["50%", "45%"],
+      data: pieData,
+      label: { color: "#8a9aaa", fontSize: 10, formatter: "{b}\n{d}%" },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } }
+    }]
+  }, true);
+}
+
+// ---- Tab: Stats (数据存储总览) ----
+var statsMiniCharts = {};
+
+async function loadStats() {
+  var dev = document.getElementById("deviceSelect").value;
+  document.getElementById("status").textContent = "加载统计...";
+  try {
+    var url = "/api/vitals/stats";
+    if (dev) url += "?device=" + encodeURIComponent(dev);
+    var r = await api(url);
+    if (r.code !== 0 || !r.data) return;
+    var stats = r.data.stats || [];
+
+    // Summary row
+    var totalRows = 0, tablesWithData = 0;
+    var allLatest = null, allEarliest = null;
+    stats.forEach(function(s) {
+      totalRows += s.totalRows;
+      if (s.totalRows > 0) tablesWithData++;
+      if (s.latestAt && (!allLatest || s.latestAt > allLatest)) allLatest = s.latestAt;
+      if (s.earliestAt && (!allEarliest || s.earliestAt < allEarliest)) allEarliest = s.earliestAt;
+    });
+    var summaryHtml = '<div class="stat-item"><div class="val">' + totalRows.toLocaleString() + '</div><div class="lbl">总数据行数</div></div>';
+    summaryHtml += '<div class="stat-item"><div class="val">' + tablesWithData + ' / ' + stats.length + '</div><div class="lbl">有数据的表</div></div>';
+    if (allEarliest && allLatest) {
+      summaryHtml += '<div class="stat-item"><div class="val">' + formatSpan(allEarliest, allLatest) + '</div><div class="lbl">数据时间跨度</div></div>';
+    }
+    document.getElementById("stats-summary-row").innerHTML = summaryHtml;
+
+    // Build cards grouped by A/B/C
+    var groups = [
+      { key: "A 组·实时BLE", label: "A 组 · 实时 BLE 流（高频，30d 降采样）" },
+      { key: "B 组·离线同步", label: "B 组 · 设备离线同步" },
+      { key: "C 组·用户输入", label: "C 组 · 用户输入" }
+    ];
+    var groupClass = { "A 组·实时BLE": "group-a", "B 组·离线同步": "group-b", "C 组·用户输入": "group-c" };
+
+    // Dispose old mini charts
+    Object.values(statsMiniCharts).forEach(function(c) { if (c && !c.isDisposed()) c.dispose(); });
+    statsMiniCharts = {};
+
+    var container = document.getElementById("stats-cards-container");
+    var html = "";
+    groups.forEach(function(g) {
+      var groupStats = stats.filter(function(s) { return s.group === g.key; });
+      if (!groupStats.length) return;
+      html += '<div class="stat-group-title">' + g.label + '</div><div class="stats-grid">';
+      groupStats.forEach(function(s) {
+        var cssClass = groupClass[s.group] || "";
+        var latestStr = s.latestAt ? new Date(s.latestAt).toLocaleString() : "无数据";
+        html += '<div class="stat-card ' + cssClass + '">';
+        html += '<div class="card-header"><span class="card-table">' + s.table + '</span><span class="card-group">' + s.group + '</span></div>';
+        html += '<div class="card-meta">';
+        html += '<span>行数: <span class="val-highlight">' + s.totalRows.toLocaleString() + '</span></span>';
+        html += '<span>设备: ' + s.deviceCount + '</span>';
+        html += '<span>最新: ' + latestStr + '</span>';
+        html += '</div>';
+        html += '<div class="card-mini-chart" id="mini-' + s.table + '"></div>';
+        html += '<div class="card-actions">';
+        if (s.totalRows > 0) {
+          html += '<button class="btn-view-rows" onclick="openTableDrawer(\'' + s.table + '\')">查看数据</button>';
+        } else {
+          html += '<button class="btn-view-rows" disabled>暂无数据</button>';
+        }
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+
+    if (!stats.length) {
+      html = '<div class="stats-empty">暂无统计数据，请确认数据库是否已初始化</div>';
+    }
+    container.innerHTML = html;
+
+    // Render mini bar charts
+    setTimeout(function() {
+      stats.forEach(function(s) {
+        var el = document.getElementById("mini-" + s.table);
+        if (!el) return;
+        var chart = echarts.init(el);
+        statsMiniCharts[s.table] = chart;
+        var days = (s.dailyWrites || []).map(function(d) { return d.date.substring(5); }); // MM-DD
+        var counts = (s.dailyWrites || []).map(function(d) { return d.count; });
+        var maxCount = counts.length ? Math.max.apply(null, counts) : 1;
+        chart.setOption({
+          grid: { left: 0, right: 0, top: 2, bottom: 2 },
+          xAxis: { type: "category", data: days, show: false },
+          yAxis: { type: "value", show: false, max: maxCount || 1 },
+          series: [{
+            type: "bar",
+            data: counts,
+            itemStyle: { color: "#7ec8a0", borderRadius: [2,2,0,0] },
+            barMaxWidth: 12
+          }],
+          tooltip: {
+            trigger: "axis",
+            backgroundColor: "#1a2a3a",
+            borderColor: "#3a4a5a",
+            textStyle: { color: "#e0e6ed", fontSize: 11 },
+            formatter: function(ps) { return (ps[0] || {}).name + ": " + (ps[0] || {}).value + " 条"; }
+          }
+        }, true);
+      });
+    }, 50);
+
+    document.getElementById("status").textContent = "已加载";
+  } catch(e) { console.error(e); document.getElementById("status").textContent = "加载失败"; }
+}
+
+function formatSpan(fromIso, toIso) {
+  try {
+    var from = new Date(fromIso), to = new Date(toIso);
+    var days = Math.round((to - from) / 86400000);
+    if (days < 1) return "<1 天";
+    if (days < 30) return days + " 天";
+    if (days < 365) return Math.round(days / 30) + " 月";
+    return Math.round(days / 365) + " 年";
+  } catch(e) { return "-"; }
+}
+
+// ---- Table Drawer (数据浏览) ----
+var drawerState = { table: "", columns: [], rows: [], currentPage: 1, pageSize: 100, totalRows: 0, truncated: false };
+
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function formatCellValue(val, colName) {
+  if (val == null) return '<span class="null-val">NULL</span>';
+  if (colName === "ts" && typeof val === "number" && val > 1e11) {
+    return escapeHtml(val);
+  }
+  if (typeof val === "object") return escapeHtml(JSON.stringify(val));
+  var s = String(val);
+  if (s.length > 120) return escapeHtml(s.substring(0, 120) + "...");
+  return escapeHtml(s);
+}
+
+function formatTsReadable(ts) {
+  if (ts == null || ts === 0) return "-";
+  try { return new Date(ts).toLocaleString(); } catch(e) { return "-"; }
+}
+
+async function openTableDrawer(table) {
+  var dev = document.getElementById("deviceSelect").value;
+  if (!dev) {
+    alert("请先选择设备");
+    return;
+  }
+  var tr = getTimeRange();
+  drawerState = { table: table, columns: [], rows: [], currentPage: 1, pageSize: 100, totalRows: 0, truncated: false };
+
+  document.getElementById("drawer-table-name").textContent = table;
+  document.getElementById("drawer-table-meta").textContent = "设备: " + dev + " · 时间窗: " + document.getElementById("timePreset").options[document.getElementById("timePreset").selectedIndex].text;
+  document.getElementById("drawer-body").innerHTML = '<div class="drawer-loading">加载中...</div>';
+  document.getElementById("drawer-truncated").style.display = "none";
+  document.getElementById("table-drawer").classList.add("open");
+
+  try {
+    var url = "/api/vitals/table-rows?device=" + encodeURIComponent(dev)
+      + "&table=" + encodeURIComponent(table)
+      + "&from_=" + tr.from + "&to_=" + tr.to + "&limit=500";
+    var r = await api(url);
+    if (r.code !== 0 || !r.data) {
+      document.getElementById("drawer-body").innerHTML = '<div class="drawer-empty">加载失败</div>';
+      return;
+    }
+    drawerState.columns = r.data.columns || [];
+    drawerState.rows = r.data.rows || [];
+    drawerState.totalRows = drawerState.rows.length;
+    drawerState.truncated = drawerState.totalRows >= 500;
+    renderDrawerPage(1);
+  } catch(e) {
+    console.error(e);
+    document.getElementById("drawer-body").innerHTML = '<div class="drawer-empty">加载失败: ' + escapeHtml(e.message || String(e)) + '</div>';
+  }
+}
+
+function renderDrawerPage(page) {
+  var cols = drawerState.columns;
+  var rows = drawerState.rows;
+  if (!cols.length) {
+    document.getElementById("drawer-body").innerHTML = '<div class="drawer-empty">该表暂无列定义</div>';
+    updateDrawerPagination(0, 0);
+    return;
+  }
+  if (!rows.length) {
+    document.getElementById("drawer-body").innerHTML = '<div class="drawer-empty">当前时间窗内暂无数据<br><span style="font-size:12px;color:#4a5a6a">可尝试扩大上方时间范围</span></div>';
+    updateDrawerPagination(0, 0);
+    return;
+  }
+
+  var totalPages = Math.max(1, Math.ceil(rows.length / drawerState.pageSize));
+  drawerState.currentPage = Math.min(Math.max(1, page), totalPages);
+  var start = (drawerState.currentPage - 1) * drawerState.pageSize;
+  var pageRows = rows.slice(start, start + drawerState.pageSize);
+
+  var tsIdx = cols.indexOf("ts");
+  var displayCols = cols.slice();
+  if (tsIdx >= 0) {
+    displayCols.splice(tsIdx + 1, 0, "时间");
+  }
+
+  var thead = "<tr>" + displayCols.map(function(c) { return "<th>" + escapeHtml(c) + "</th>"; }).join("") + "</tr>";
+  var tbody = pageRows.map(function(row) {
+    var cells = [];
+    for (var i = 0; i < cols.length; i++) {
+      cells.push("<td title=\"" + escapeHtml(row[i] != null ? String(row[i]) : "") + "\">" + formatCellValue(row[i], cols[i]) + "</td>");
+      if (i === tsIdx) {
+        cells.push("<td>" + escapeHtml(formatTsReadable(row[i])) + "</td>");
+      }
+    }
+    return "<tr>" + cells.join("") + "</tr>";
+  }).join("");
+
+  document.getElementById("drawer-body").innerHTML = '<table class="drawer-table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>';
+  updateDrawerPagination(drawerState.currentPage, totalPages);
+
+  var truncEl = document.getElementById("drawer-truncated");
+  if (drawerState.truncated) {
+    truncEl.style.display = "";
+    truncEl.textContent = "提示：当前时间窗内最多显示 500 行（API limit）。若需查看更多，请缩小时间范围或联系后端扩展分页。";
+  } else {
+    truncEl.style.display = "none";
+  }
+}
+
+function updateDrawerPagination(current, total) {
+  document.getElementById("drawer-page-info").textContent = total > 0 ? ("第 " + current + "/" + total + " 页") : "无数据";
+  document.getElementById("drawer-prev").disabled = current <= 1;
+  document.getElementById("drawer-next").disabled = total <= 0 || current >= total;
+  var meta = document.getElementById("drawer-table-meta");
+  var dev = document.getElementById("deviceSelect").value;
+  var preset = document.getElementById("timePreset").options[document.getElementById("timePreset").selectedIndex].text;
+  meta.textContent = "设备: " + dev + " · " + preset + " · 共 " + drawerState.totalRows + " 行";
+}
+
+function drawerPrevPage() {
+  if (drawerState.currentPage > 1) renderDrawerPage(drawerState.currentPage - 1);
+}
+
+function drawerNextPage() {
+  var totalPages = Math.ceil(drawerState.rows.length / drawerState.pageSize);
+  if (drawerState.currentPage < totalPages) renderDrawerPage(drawerState.currentPage + 1);
+}
+
+function closeTableDrawer() {
+  document.getElementById("table-drawer").classList.remove("open");
+}
+
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape" && document.getElementById("table-drawer").classList.contains("open")) {
+    closeTableDrawer();
+  }
+});
+
+// init
+initCharts();
+// 从本机浏览器恢复已保存的 API Key
+var savedKey = localStorage.getItem("mb_api_key");
+if (savedKey) {
+  API_KEY = savedKey;
+  document.getElementById("apiKeyInput").value = savedKey;
+  document.getElementById("status").textContent = "API Key 已从本机恢复";
+}
+loadDevices();
+</script>
+</body>
+</html>

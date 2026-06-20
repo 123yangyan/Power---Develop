@@ -239,15 +239,24 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setQuietHours(start: String, end: String) {
-        viewModelScope.launch { moodPreferences.setQuietHours(start, end) }
+        viewModelScope.launch {
+            moodPreferences.setQuietHours(start, end)
+            scheduleNextReminderFromPreferences()
+        }
     }
 
     fun setNotificationsEnabled(enabled: Boolean) {
-        viewModelScope.launch { moodPreferences.setNotificationsEnabled(enabled) }
+        viewModelScope.launch {
+            moodPreferences.setNotificationsEnabled(enabled)
+            refreshScheduleAfterSettingChange()
+        }
     }
 
     fun setStrongPopup(enabled: Boolean) {
-        viewModelScope.launch { moodPreferences.setStrongPopup(enabled) }
+        viewModelScope.launch {
+            moodPreferences.setStrongPopup(enabled)
+            refreshScheduleAfterSettingChange()
+        }
     }
 
     fun scheduleTestReminder(delaySeconds: Int) {
@@ -261,6 +270,17 @@ class MoodRecordViewModel(application: Application) : AndroidViewModel(applicati
         if (mode != ConnectionMode.ON_DEMAND) return null
         val deviceId = devicePreferences.savedDeviceId.first() ?: return null
         return polarBleManager.connectForSnapshot(deviceId)
+    }
+
+    private suspend fun refreshScheduleAfterSettingChange() {
+        val notifOn = moodPreferences.isNotificationsEnabledSync()
+        val popupOn = moodPreferences.isStrongPopupSync()
+        if (!notifOn && !popupOn) {
+            MoodReminderScheduler.cancel(getApplication())
+        } else {
+            MoodReminderScheduler.schedule(getApplication())
+            scheduleNextReminderFromPreferences()
+        }
     }
 
     private suspend fun scheduleNextReminderFromPreferences() {

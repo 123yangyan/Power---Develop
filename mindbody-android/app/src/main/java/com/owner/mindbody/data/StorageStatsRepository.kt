@@ -49,7 +49,7 @@ class StorageStatsRepository(
             ),
             stat(
                 tableName = "acc_minute_summary",
-                displayName = "加速度分钟汇总",
+                displayName = "加速度10秒汇总",
                 category = StorageTableCategory.LIVE_STREAM,
                 count = dao.countAccMinuteSummary(),
                 lastUpdatedMs = dao.lastAccMinuteTimestamp()

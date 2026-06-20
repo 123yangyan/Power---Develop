@@ -16,4 +16,11 @@ interface SleepSessionDao {
 
     @Query("SELECT * FROM sleep_sessions WHERE syncState != 'SYNCED' LIMIT :limit")
     suspend fun getUnsynced(limit: Int): List<SleepSessionEntity>
+
+    @Query("UPDATE sleep_sessions SET syncState = 'SYNCED', remoteId = :remoteId, updatedAt = :updatedAt WHERE date IN (:dates)")
+    suspend fun markSynced(dates: List<String>, remoteId: String?, updatedAt: Long = System.currentTimeMillis())
+
+    /** 删除指定日期之前已同步的数据，7天滚动清理专用。安全：只删 SYNCED 行。 */
+    @Query("DELETE FROM sleep_sessions WHERE date < :cutoffDate AND syncState = 'SYNCED'")
+    suspend fun deleteSyncedBeforeDate(cutoffDate: String): Int
 }

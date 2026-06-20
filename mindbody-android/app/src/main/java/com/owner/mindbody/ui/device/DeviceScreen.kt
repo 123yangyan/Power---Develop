@@ -9,18 +9,24 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.owner.mindbody.data.sync.DeviceSyncStatus
 import com.owner.mindbody.worker.MoodReminderDeliver
 import com.owner.mindbody.data.MoodPreferences
 import com.owner.mindbody.ui.mood.MoodRecordViewModel
@@ -67,6 +74,12 @@ fun DeviceScreen(
     val savedId by viewModel.savedDeviceId.collectAsState()
     val mode by viewModel.connectionMode.collectAsState()
     val developerMode by viewModel.developerModeEnabled.collectAsState()
+    val syncUrl by viewModel.syncBaseUrl.collectAsState()
+    val syncKey by viewModel.syncApiKey.collectAsState()
+    val syncOn by viewModel.syncEnabled.collectAsState()
+    val syncLast by viewModel.lastSyncResult.collectAsState()
+    val deviceSyncStatus by viewModel.deviceSyncStatus.collectAsState()
+    val deviceSyncError by viewModel.deviceSyncError.collectAsState()
 
     Column(
         modifier = Modifier
@@ -120,25 +133,37 @@ fun DeviceScreen(
                     active = connectionState == ConnectionState.CONNECTED
                 )
             }
-            if (battery != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = "硬件电量", style = StatLabel.copy(fontSize = CardTitle.fontSize * 0.85f))
-                    Text(
-                        text = "$battery%",
-                        style = StatValue.copy(color = MindBodyColors.Emerald, fontSize = CardTitle.fontSize)
-                    )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "硬件电量", style = StatLabel.copy(fontSize = CardTitle.fontSize * 0.85f))
+                val level = battery // 局部变量避免 delegated property smart-cast 问题
+                val batteryText = if (level != null) "$level%" else "—"
+                val batteryColor = when {
+                    level == null -> MindBodyColors.OnBackgroundSecondary
+                    level <= 20 -> MindBodyColors.HeartRed
+                    else -> MindBodyColors.Emerald
                 }
+                Text(
+                    text = batteryText,
+                    style = StatValue.copy(color = batteryColor, fontSize = CardTitle.fontSize)
+                )
             }
             status?.let {
                 Text(
                     text = it,
                     style = StatLabel,
                     modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            if (connectionState == ConnectionState.CONNECTED) {
+                DeviceSyncStatusRow(
+                    syncStatus = deviceSyncStatus,
+                    errorMsg = deviceSyncError,
+                    modifier = Modifier.padding(top = 10.dp)
                 )
             }
         }
@@ -263,6 +288,69 @@ fun DeviceScreen(
                     ) {
                         Text("storage 看板")
                     }
+                }
+                // 云端同步设置
+                Text(
+                    text = "云端同步",
+                    style = CardTitle,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+                OutlinedTextField(
+                    value = syncUrl,
+                    onValueChange = { viewModel.setSyncBaseUrl(it) },
+                    label = { Text("Server URL", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(top = 4.dp),
+                    textStyle = StatLabel.copy(fontSize = 12.sp)
+                )
+                OutlinedTextField(
+                    value = syncKey,
+                    onValueChange = { viewModel.setSyncApiKey(it) },
+                    label = { Text("API Key", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(top = 4.dp),
+                    textStyle = StatLabel.copy(fontSize = 12.sp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("自动同步 (每 2h)", style = StatLabel)
+                    Switch(
+                        checked = syncOn,
+                        onCheckedChange = { viewModel.setSyncEnabled(it) }
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.triggerSyncNow() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.Emerald),
+                        shape = MindBodyShapes.RadioOption
+                    ) {
+                        Text("立即同步")
+                    }
+                }
+                if (syncLast.isNotBlank()) {
+                    Text(
+                        text = syncLast,
+                        style = StatLabel,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
         }
@@ -453,5 +541,51 @@ private fun deviceSubtitle(state: ConnectionState, deviceId: String?): String {
         ConnectionState.CONNECTED -> "ID: $id • CONNECTED"
         ConnectionState.CONNECTING -> "ID: $id • CONNECTING"
         else -> "ID: $id • DISCONNECTED"
+    }
+}
+
+@Composable
+fun DeviceSyncStatusRow(
+    syncStatus: DeviceSyncStatus,
+    errorMsg: String?,
+    modifier: Modifier = Modifier
+) {
+    val (icon, tint, label) = when (syncStatus) {
+        DeviceSyncStatus.SYNCING -> Triple(
+            Icons.Default.Sync,
+            MindBodyColors.PrimaryIndigo,
+            "正在拉取设备数据…"
+        )
+        DeviceSyncStatus.SUCCESS -> Triple(
+            Icons.Default.CheckCircle,
+            MindBodyColors.Emerald,
+            "设备数据已同步"
+        )
+        DeviceSyncStatus.FAILED -> Triple(
+            Icons.Default.Warning,
+            MindBodyColors.HeartRed,
+            errorMsg?.take(60) ?: "设备同步失败"
+        )
+        DeviceSyncStatus.IDLE -> Triple(
+            Icons.Default.History,
+            MindBodyColors.OnBackgroundSecondary,
+            "等待同步"
+        )
+    }
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = label,
+            style = StatLabel.copy(color = tint)
+        )
     }
 }

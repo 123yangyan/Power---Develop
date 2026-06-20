@@ -24,6 +24,19 @@ class Hr247Repository(private val database: AppDatabase) {
         buffer.flush()
     }
 
+    suspend fun getUnsynced(limit: Int): List<Hr247SampleEntity> {
+        flush()
+        return dao.getUnsynced(limit)
+    }
+
+    suspend fun markSynced(ids: List<Long>, remoteId: String? = null) {
+        dao.markSynced(ids, remoteId)
+    }
+
+    suspend fun markFailed(ids: List<Long>) {
+        dao.markFailed(ids)
+    }
+
     /** 观察今日 24/7 离线心率样本（断联期间由手表记录、重连后同步）。 */
     fun observeTodaySamples(): Flow<List<Hr247SampleEntity>> {
         val (start, end) = todayRangeMs()

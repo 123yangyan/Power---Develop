@@ -24,4 +24,17 @@ class ActivityMinuteRepository(private val database: AppDatabase) {
     suspend fun flush() {
         buffer.flush()
     }
+
+    suspend fun getUnsynced(limit: Int): List<ActivityMinuteSampleEntity> {
+        flush()
+        return dao.getUnsynced(limit)
+    }
+
+    suspend fun markSynced(ids: List<Long>, remoteId: String? = null) {
+        dao.markSynced(ids, remoteId)
+    }
+
+    suspend fun markFailed(ids: List<Long>) {
+        dao.markFailed(ids)
+    }
 }

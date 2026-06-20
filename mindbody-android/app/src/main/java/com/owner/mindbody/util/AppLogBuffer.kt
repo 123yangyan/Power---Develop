@@ -21,14 +21,16 @@ object AppLogBuffer {
     val entries: StateFlow<List<AppLogEntry>> = _entries.asStateFlow()
 
     fun append(entry: AppLogEntry) {
+        val snapshot: List<AppLogEntry>
         synchronized(lock) {
             val stored = entry.copy(id = nextId.incrementAndGet())
             if (deque.size >= MAX_ENTRIES) {
                 deque.removeFirst()
             }
             deque.addLast(stored)
-            _entries.value = deque.toList()
+            snapshot = deque.toList()
         }
+        _entries.value = snapshot
     }
 
     fun clear() {
