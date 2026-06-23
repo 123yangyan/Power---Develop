@@ -2,6 +2,7 @@ package com.owner.mindbody.polar
 
 import android.content.Context
 import com.owner.mindbody.data.DevicePreferences
+import com.owner.mindbody.data.stream.PpiLiveBuffer
 import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.util.AppLogger
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -75,6 +77,12 @@ class PolarBleManager(
         private const val RECONNECT_DELAY_MS = 3_000L
         private const val SNAPSHOT_TIMEOUT_MS = 30_000L
         private const val AUTO_CONNECT_SCAN_TIMEOUT_MS = 15_000L
+        private const val AUTO_CONNECT_WATCHDOG_MS = 25_000L
+        private const val STALE_GATT_CLEANUP_DELAY_MS = 1_000L
+
+        // HR 流启动时如遇 BleServiceNotFound（GATT 服务尚未发现），最多重试 3 次
+        private const val HR_STREAM_MAX_RETRIES = 3
+        private const val HR_STREAM_RETRY_DELAY_MS = 3_000L
 
         // Polar 设备 epoch 为 2000-01-01T00:00:00Z，Unix epoch 为 1970-01-01T00:00:00Z。
         // 写入 DB / 上报服务端前须加此偏移（毫秒），使时间戳与手机端 System.currentTimeMillis() 同域。
@@ -131,6 +139,13 @@ class PolarBleManager(
     /** 最新 PPI（心跳间期）样本。 */
     private val _latestPpi = MutableStateFlow<PolarPpiData.PolarPpiSample?>(null)
     val latestPpi: StateFlow<PolarPpiData.PolarPpiSample?> = _latestPpi.asStateFlow()
+
+    /** PPI 在线流环形缓冲区 — WorkManager 推流消费端从此取窗口。 */
+    val ppiLiveBuffer = PpiLiveBuffer(maxSize = 600)
+
+    /** 当前加速度幅值 (mg) — 从最新 AccSample 计算。 */
+    private val _currentAccMagnitudeMg = MutableStateFlow<Int?>(null)
+    val currentAccMagnitudeMg: StateFlow<Int?> = _currentAccMagnitudeMg.asStateFlow()
 
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
@@ -299,10 +314,38 @@ class PolarBleManager(
             }
 
             try {
+                // 清理上次进程残留的 GATT 连接，使设备重新开始广播
+                userInitiatedDisconnect = true
+                try {
+                    api.disconnectFromDevice(savedId)
+                    delay(STALE_GATT_CLEANUP_DELAY_MS)
+                } catch (_: Exception) {
+                    // 未连接时忽略
+                }
+
                 userInitiatedDisconnect = false
                 reconnectJob?.cancel()
                 devicePreferences.saveDeviceId(savedId)
                 api.connectToDevice(savedId)
+
+                // 看门狗：SDK 完全静默（无任何回调）时，强制重置并触发 scheduleReconnect
+                val connected = withTimeoutOrNull(AUTO_CONNECT_WATCHDOG_MS) {
+                    if (_connectionState.value == ConnectionState.CONNECTED) return@withTimeoutOrNull true
+                    connectionState.first {
+                        it == ConnectionState.CONNECTING || it == ConnectionState.CONNECTED
+                    }
+                    if (_connectionState.value == ConnectionState.CONNECTED) return@withTimeoutOrNull true
+                    connectionState.first {
+                        it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED
+                    }
+                    _connectionState.value == ConnectionState.CONNECTED
+                } ?: false
+
+                if (!connected) {
+                    AppLogger.w(TAG, "Auto-connect watchdog triggered: resetting state")
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    scheduleReconnect(savedId)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -468,14 +511,44 @@ class PolarBleManager(
     private fun startHrStreaming(deviceId: String) {
         if (hrStreamJob?.isActive == true) return
         hrStreamJob = scope.launch {
-            api.startHrStreaming(deviceId)
-                .catch { e ->
-                    AppLogger.e(TAG, "HR stream error", e)
-                    setStatus("心率流中断：${e.message}")
+            // 外层 try-catch 捕获 BleServiceNotFound 等在 Flow 建立阶段（非 emit 阶段）
+            // 抛出的异常。这类异常绕过 .catch 算子直接逃逸至协程，在 SupervisorJob 下
+            // 若不捕获会触发线程 UncaughtExceptionHandler → 进程崩溃。
+            // Polar Loop Gen 2 在 GATT 完成服务发现前调用 setCharacteristicNotify 即触发此异常。
+            var lastException: Exception? = null
+            for (attempt in 1..HR_STREAM_MAX_RETRIES) {
+                try {
+                    api.startHrStreaming(deviceId)
+                        .catch { e ->
+                            if (e is CancellationException) throw e
+                            AppLogger.e(TAG, "HR stream error (attempt=$attempt)", e)
+                            setStatus("心率流中断：${e.message}")
+                        }
+                        .collect { hrData ->
+                            processHrData(hrData)
+                        }
+                    return@launch  // 正常结束（流关闭），不继续重试
+                } catch (e: CancellationException) {
+                    throw e  // 协程取消必须向上传播
+                } catch (e: Exception) {
+                    lastException = e
+                    AppLogger.w(
+                        TAG,
+                        "HR stream setup failed (attempt=$attempt/$HR_STREAM_MAX_RETRIES): " +
+                            "${e.javaClass.simpleName} – ${e.message}"
+                    )
+                    if (attempt < HR_STREAM_MAX_RETRIES) {
+                        setStatus("心率服务初始化中，稍后重试…")
+                        delay(HR_STREAM_RETRY_DELAY_MS)
+                        // 若期间设备已断开，停止重试
+                        if (_connectionState.value != ConnectionState.CONNECTED ||
+                            _connectedDeviceId.value != deviceId
+                        ) return@launch
+                    }
                 }
-                .collect { hrData ->
-                    processHrData(hrData)
-                }
+            }
+            AppLogger.e(TAG, "HR streaming gave up after $HR_STREAM_MAX_RETRIES retries", lastException)
+            setStatus("心率服务暂不可用，请确认设备佩戴后重连")
         }
     }
 
@@ -620,6 +693,11 @@ class PolarBleManager(
         data.samples.forEachIndexed { i, sample ->
             val ts = batchEndMs - (data.samples.size - 1 - i) * intervalMs
             _currentAcc.value = AccSample(x = sample.x, y = sample.y, z = sample.z)
+            // 计算幅值 magnitude(mg) = sqrt(x² + y² + z²) — 1g=1000mg 重力分量
+            val mag = kotlin.math.sqrt(
+                (sample.x * sample.x + sample.y * sample.y + sample.z * sample.z).toDouble()
+            ).toInt()
+            _currentAccMagnitudeMg.value = mag
             storage.acc.ingestSample(sample.x, sample.y, sample.z, ts)
         }
     }
@@ -638,6 +716,16 @@ class PolarBleManager(
             storage.ppi.saveSample(
                 timestamp = timestamp,
                 sample = sample
+            )
+            // 同步写入 Live Buffer 供推流 Worker 消费
+            ppiLiveBuffer.push(
+                timestampMs = timestamp,
+                ppiMs = sample.ppi,
+                hrBpm = sample.hr,
+                blocker = sample.blockerBit,
+                skinContactOk = sample.skinContactStatus,
+                errorEstimateMs = sample.errorEstimate,
+                accMagnitudeMg = _currentAccMagnitudeMg.value
             )
         }
     }

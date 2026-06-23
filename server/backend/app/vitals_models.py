@@ -211,3 +211,139 @@ class PpiHourlyAgg(Base):
     avg_ppi_ms: Mapped[float] = mapped_column(Float, nullable=False)
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
     __table_args__ = (UniqueConstraint("device_id", "hour_ts", name="uq_ppi_hourly"),)
+
+
+# ========== Phase 1–6: 实时生理状态检测分析表 ==========
+
+class PpiAnalysisWindow(Base):
+    """Android 推流上来的 PPI 原始窗口 — 服务器异步分析的入口。"""
+    __tablename__ = "ppi_analysis_windows"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    window_start_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    window_end_ts: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rr_list_ms: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    n_raw: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_clean: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    on_device_rmssd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    on_device_sdnn: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acc_magnitude_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    __table_args__ = (UniqueConstraint("device_id", "window_start_ts", name="uq_ppi_window"),)
+
+
+class HrvAnalysisResult(Base):
+    """HeartPy + 自定义指标分析结果。"""
+    __tablename__ = "hrv_analysis_results"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    window_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ts: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rmssd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sdnn: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnn50: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnn20: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lf: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hf: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lf_hf: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vlf: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sd1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sd2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sd1_sd2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sampen: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dfa_alpha1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    breathing_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hr_surge_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_movement: Mapped[bool] = mapped_column(Boolean, default=False)
+    n_clean: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    coverage_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PhysioStateClassification(Base):
+    """生理状态分类结果 — 焦虑分数 + 状态标签。"""
+    __tablename__ = "physio_state_classifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    window_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ts: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    anxiety_score: Mapped[float] = mapped_column(Float, nullable=False)
+    state_label: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    z_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    skin_temp_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acc_suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
+    should_notify: Mapped[bool] = mapped_column(Boolean, default=False)
+    cooldown_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    __table_args__ = (UniqueConstraint("device_id", "window_id", name="uq_state_classification"),)
+
+
+class LlmFeedbackHistory(Base):
+    """LLM 生成的反馈记录。"""
+    __tablename__ = "llm_feedback_history"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ts: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    classification_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    state_label: Mapped[str] = mapped_column(String(32), nullable=False)
+    anxiety_score: Mapped[float] = mapped_column(Float, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    tone: Mapped[str] = mapped_column(String(32), nullable=False)
+    triggered_notification: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_response: Mapped[str | None] = mapped_column(String(32), nullable=True)  # logged/snoozed/dismissed/none
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PhysioStateLabel(Base):
+    """用户情绪标注 — 为未来 ML 模型积累训练数据。"""
+    __tablename__ = "physio_state_labels"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    window_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    label: Mapped[str] = mapped_column(String(32), nullable=False)  # anxious/calm/stressed/normal
+    labeled_by: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    labeled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class DeviceBaselineSnapshot(Base):
+    """设备个人基线每日快照。"""
+    __tablename__ = "device_baseline_snapshots"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    date: Mapped[str] = mapped_column(String(10), nullable=False)  # "2026-06-20"
+    window_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rmssd_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sdnn_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnn50_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lf_hf_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sd1_sd2_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sampen_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dfa_alpha1_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    breathing_rate_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bpm_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    skin_temp_c_ewma: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # 完整基线 JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    __table_args__ = (UniqueConstraint("device_id", "date", name="uq_baseline_snapshot"),)
+
+
+class FcmToken(Base):
+    """FCM 设备推送 token。"""
+    __tablename__ = "fcm_tokens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False, unique=True)
+    token: Mapped[str] = mapped_column(String(512), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class TemplateWeight(Base):
+    """通知模板权重 — Phase 6 反馈闭环使用。"""
+    __tablename__ = "template_weights"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_label: Mapped[str] = mapped_column(String(32), nullable=False)
+    tone: Mapped[str] = mapped_column(String(32), nullable=False)
+    response_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("state_label", "tone", name="uq_template_weight"),)

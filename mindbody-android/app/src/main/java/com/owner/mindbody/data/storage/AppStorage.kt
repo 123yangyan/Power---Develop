@@ -7,8 +7,10 @@ import com.owner.mindbody.data.ActivityMinuteRepository
 import com.owner.mindbody.data.DeviceSyncPreferences
 import com.owner.mindbody.data.Hr247Repository
 import com.owner.mindbody.data.HrRepository
+import com.owner.mindbody.data.LlmFeedbackEntry
 import com.owner.mindbody.data.MoodRepository
 import com.owner.mindbody.data.NightlyRechargeRepository
+import com.owner.mindbody.data.PhysioStateSummary
 import com.owner.mindbody.data.Ppi247Repository
 import com.owner.mindbody.data.PpiRepository
 import com.owner.mindbody.data.SleepRepository
@@ -20,6 +22,9 @@ import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.data.sync.SyncManager
 import com.owner.mindbody.data.sync.SyncPreferences
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * App 的统一存储入口。
@@ -57,6 +62,27 @@ class AppStorage(context: Context) {
 
     fun initDeviceSync(deviceSyncManager: DeviceSyncManager) {
         deviceSync = deviceSyncManager
+    }
+
+    // ── 生理状态门面（Phase 3 短期：ViewModel 轮询写入，不建 Room Entity）──
+
+    private val _latestPhysioState = MutableStateFlow<PhysioStateSummary?>(null)
+    private val _feedbackHistory = MutableStateFlow<List<LlmFeedbackEntry>>(emptyList())
+
+    /** 最新生理状态快照，由 PhysioStateViewModel 通过 API 轮询后更新。 */
+    val latestPhysioState: Flow<PhysioStateSummary?> = _latestPhysioState.asStateFlow()
+
+    /** LLM 反馈历史列表，由 PhysioStateViewModel 更新。 */
+    val feedbackHistory: Flow<List<LlmFeedbackEntry>> = _feedbackHistory.asStateFlow()
+
+    /** PhysioStateViewModel 调用此方法将轮询到的数据写入门面。 */
+    fun updatePhysioState(summary: PhysioStateSummary?) {
+        _latestPhysioState.value = summary
+    }
+
+    /** PhysioStateViewModel 调用此方法更新反馈历史。 */
+    fun updateFeedbackHistory(entries: List<LlmFeedbackEntry>) {
+        _feedbackHistory.value = entries
     }
 
     suspend fun flushAll() {

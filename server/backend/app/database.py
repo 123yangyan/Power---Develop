@@ -30,12 +30,16 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
 
-    # 兼容已有数据库：添加 processing_at 列
+    # 兼容已有数据库：增量列（失败时打日志，避免静默 500）
     with engine.begin() as conn:
-        try:
-            conn.execute(text("ALTER TABLE audio_files ADD COLUMN processing_at DATETIME"))
-        except Exception:
-            pass
+        for stmt in (
+            "ALTER TABLE audio_files ADD COLUMN IF NOT EXISTS processing_at TIMESTAMPTZ",
+            "ALTER TABLE hrv_analysis_results ADD COLUMN IF NOT EXISTS is_movement BOOLEAN NOT NULL DEFAULT FALSE",
+        ):
+            try:
+                conn.execute(text(stmt))
+            except Exception as exc:
+                logger.warning("Schema patch skipped (%s): %s", stmt[:60], exc)
 
     # TimescaleDB：为 A 组高频表创建 hypertable（幂等）
     _create_hypertables()
@@ -78,6 +82,7 @@ def _create_hypertables() -> None:
         ("skin_temp_samples", "ts"),
         ("ppi_samples", "ts"),
         ("acc_minute_summary", "ts"),
+        ("ppi_analysis_windows", "window_start_ts"),
     ]
     try:
         with engine.begin() as conn:

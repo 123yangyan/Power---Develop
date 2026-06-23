@@ -6,11 +6,11 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品说明：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-20
+**最后更新**：2026-06-23
 
 ---
 
-## 索引（已实现 35 条 + 稳定性修复 8 条）
+## 索引（已实现 38 条 + 稳定性修复 9 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -185,18 +185,19 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-23 |
 
 #### 已实现方案
 
 - **目的**：Polar Loop 扫描、连接、断开与状态流；冷启动自动连已保存设备。
 - **入口**：`MindBodyApplication.polarBleManager`；启动自动连 `tryAutoConnectSavedDevice()`
 - **关键文件**：`polar/PolarBleManager.kt`、`ui/device/AutoConnectEffect.kt`、`ui/device/DeviceScreen.kt`、`ui/device/DeviceViewModel.kt`
-- **调用约定**：SDK 8.0.0；`ConnectionState` StateFlow 驱动 UI；`AppNavigation` 挂载 `AutoConnectEffect` 统一请求 BLE 权限并触发自动连；`blePowerStateChanged` 与 `AutoConnectEffect` 重复触发时合并（不 cancel 进行中的 job）；扫描 15s 超时后直连兜底；蓝牙从关到开时 `force=true` 重试；协程被取消时不消耗「本进程已尝试」标记。
-- **验收要点**：真机冷启动可自动连已保存设备；无 `StandaloneCoroutine was cancelled` 导致的假失败；常连接模式断线约 3s 自动重连；短连接模式启动也自动连但用户断开后不重连。
+- **调用约定**：SDK 8.0.0；`ConnectionState` StateFlow 驱动 UI；`AppNavigation` 挂载 `AutoConnectEffect` 统一请求 BLE 权限并触发自动连；`blePowerStateChanged` 与 `AutoConnectEffect` 重复触发时合并（不 cancel 进行中的 job）；扫描 15s 超时后直连兜底；直连前 `disconnectFromDevice` + 1s 清理残留 GATT；直连后 25s 看门狗（SDK 静默时重置并 `scheduleReconnect`）；蓝牙从关到开时 `force=true` 重试；协程被取消时不消耗「本进程已尝试」标记。
+- **验收要点**：真机冷启动可自动连已保存设备；进程异常退出后重进无需划掉后台即可恢复连接；无 `StandaloneCoroutine was cancelled` 导致的假失败；常连接模式断线约 3s 自动重连；短连接模式启动也自动连但用户断开后不重连。
 
 #### 变更记录
 
+- 2026-06-23：进程异常退出后自动连卡死修复 — 残留 GATT 清理 + 25s 看门狗 (#ble-auto-connect-watchdog)
 - 2026-06-13：修复启动双入口 cancel 导致自动连失败 (#phase1-android-polar)
 - 2026-06-13：启动自动扫描连接已保存设备 (#phase1-android-polar)
 - 2026-06-13：Phase 1 初始实现 (#phase1-android-polar)
@@ -854,6 +855,23 @@
 
 ---
 
+### F-BUG-009 进程异常退出后自动连卡死
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | 用户反馈 / 冷启动 BLE 卡死 |
+| 最后更新 | 2026-06-23 |
+
+#### 已修复内容
+
+- **问题**：App 崩溃或被系统杀进程时 `shutdown()` 未执行，OS 层 GATT 残留；设备停止广播，下次冷启动扫描超时后直连无 SDK 回调，UI 永久卡在「正在自动连接已保存设备…」。
+- **修复**：
+  - 直连前 `disconnectFromDevice(savedId)` + 1s delay，清理残留 GATT 并恢复设备广播。
+  - 直连后 25s 看门狗：若未进入 `CONNECTED`，强制 `DISCONNECTED` 并 `scheduleReconnect`。
+- **关键文件**：`polar/PolarBleManager.kt`（`tryAutoConnectInternal`）
+
+---
+
 ## 新增条目模板（功能完成后追加）
 
 ```markdown
@@ -962,3 +980,124 @@
 
 #### 变更记录
 - 2026-06-20：新增 BleSchedulerWorker 链式 OneTimeWork 调度 (#ble-nightly-scheduler)
+
+---
+
+### F-P2-UI-001 UI 全盘重构：日记本设计哲学
+
+| 字段 | 值 |
+|------|-----|
+| Plan | UI 全盘重构设计 / plan: ui_全盘重构设计_8a8fc0e6 |
+| 最后更新 | 2026-06-20 |
+
+#### 已实现方案
+- **目的**：将 App 从"工业监控器"风格改造为"文艺身心日记本"，三原则：结论先行/数据退居幕后、留白构建层次/禁止硬边框、色彩=生理状态。
+- **Design Tokens 重建**：
+  - `ui/theme/Color.kt`：全局底色改为 `AppBackground #F2F2F7`（Apple iOS 灰）+ `CardWhite #FFFFFF`；新增 6档状态语义色（CalmTeal/OceanBlue/StressAmber/AnxietyRose/HighAlertRed/BaselineTeal）+ `AmbientShadow`。
+  - `ui/theme/Shape.kt`：新增 `NarrativeCard 32dp`（叙事级）、`DataCard 24dp`（数据级）、`Button/Badge CircleShape`；保留旧别名兼容。
+  - `ui/theme/Theme.kt`：`surface` 改为 `CardWhite`，`outline` 改为 `AmbientShadow`。
+- **三大标准组件**（`ui/components/`）：
+  - `HeroIndicator.kt`（组件 C）：径向渐变底色 + 中心结论文字 + 外轨道呼吸动画（`animateFloatAsState` 1.2s 循环）。
+  - `NarrativeCard.kt`（组件 A）：32dp 圆角、20dp 内边距、顶部彩色 Badge、行高 24sp、无图禁区；配套 `NarrativeBody` / `NarrativeCaption`。
+  - `MicroGrid.kt`（组件 B）：2×2/2×3 网格、0.5dp Alpha10% 分割线、每格 16dp Sparkline 无坐标轴。
+- **状态色映射**：`ui/physio/StateColors.kt`，`stateLabel → StateColorToken(accentColor, surfaceColor, zhLabel, description)`。
+- **新「状态」Tab**（`ui/physio/`）：
+  - `PhysioStateScreen.kt`：Head(20%) HeroIndicator + Middle(50%) NarrativeCard(LLM/基线进度) + Bottom(30%) HRV 6格 MicroGrid。
+  - `PhysioStateViewModel.kt`：30s 轮询 `/api/vitals/stream/status`，结果写入 `AppStorage.updatePhysioState()`，不建 Room Entity。
+  - `FeedbackHistoryListScreen.kt` + `FeedbackHistoryCard.kt`：完整 LLM 历史列表，含用户响应标签 / "现在记录" 跳转。
+- **现有页面视觉重构**：
+  - `HeartRateScreen.kt`：HeroIndicator(BPM 呼吸环) + NarrativeCard(皮温体感) + MicroGrid(今日统计) + 折叠 SplineChart。
+  - `SensorsScreen.kt`：HeroIndicator(合加速度) + NarrativeCard(运动/PPI 质量) + MicroGrid(全指标 8格)。
+  - `DeviceScreen.kt`：新增 `StreamAnalysisCard`（NarrativeCard 24dp），显示当前状态/基线进度/最近推流时间，仅 BLE 连接时展示。
+- **导航 6 Tab**：`FloatingIslandNav.kt` 新增「状态」Tab（`MonitorHeart` 图标），图标 20dp，Island 水平 padding 缩减适配 6 项；`AppNavigation.kt` 新增 `physio_state` / `feedback_history` 路由。
+- **AppStorage 门面扩展**：`AppStorage.kt` 新增 `latestPhysioState: Flow<PhysioStateSummary?>` 与 `feedbackHistory: Flow<List<LlmFeedbackEntry>>`，配套 `updatePhysioState()` / `updateFeedbackHistory()` 写入方法。
+- **关键文件**：
+  - `ui/theme/Color.kt`, `Shape.kt`, `Theme.kt`
+  - `ui/components/HeroIndicator.kt`, `NarrativeCard.kt`, `MicroGrid.kt`
+  - `ui/physio/StateColors.kt`, `PhysioStateScreen.kt`, `PhysioStateViewModel.kt`
+  - `ui/physio/FeedbackHistoryListScreen.kt`, `FeedbackHistoryCard.kt`
+  - `ui/heartrate/HeartRateScreen.kt`（重构）
+  - `ui/sensors/SensorsScreen.kt`（重构）
+  - `ui/device/DeviceScreen.kt`（追加 StreamAnalysisCard）
+  - `ui/components/FloatingIslandNav.kt`（6 Tab）
+  - `ui/navigation/AppNavigation.kt`（新路由）
+  - `data/PhysioStateSummary.kt`（数据模型）
+  - `data/storage/AppStorage.kt`（门面扩展）
+- **调用约定**：`PhysioStateViewModel.startPolling()` / `stopPolling()` 由 Screen `DisposableEffect` 管理；其他页面从 `AppStorage.latestPhysioState` 读取无需手动轮询。
+- **验收要点**：FloatingIslandNav 显示 6 个 Tab；状态页三区域布局正确；心率页 Hero 呼吸动画可见；皮温改为叙事文字卡；传感器页三区域布局正确；设备页 BLE 连接后出现推流状态卡。
+
+#### 变更记录
+- 2026-06-20：全盘 UI 重构，日记本设计哲学落地 (plan-todo: ui-redesign-all)
+
+---
+
+### F-P1-002 — 实时 PPI 推流管道（Android Phase 1）
+
+**Plan todo**：p1a ~ p1e
+**实现日期**：2026-06-21
+
+#### 已实现方案
+
+- **On-device HRV 轻量计算**：`data/HrvOnDevice.kt` — 纯 Kotlin，`rmssd()` / `sdnn()` / `pnn50()`，零三方依赖。
+- **PPI 环形缓冲区**：`data/stream/PpiLiveBuffer.kt` — `ReentrantLock` 线程安全，`drainWindow(sinceMs)` 质量过滤：`!blocker && skinContactOk && errorEstimateMs <= 30 && ppiMs in 300..2000`（与 `HrvOnDevice.RR_MIN` 对齐）；`drainSamples(sinceMs)` 返回含元数据的完整样本；容量 600，溢出时丢弃最旧 1/3。
+- **PolarBleManager 挂接**：`polar/PolarBleManager.kt` `processPpiData()` 额外调用 `ppiLiveBuffer.push()`（含 `errorEstimate`）；`ppiLiveBuffer` 作为公开属性暴露供 Worker 消费。
+- **推流 HTTP 客户端**：`data/sync/SyncApiClient.kt` 新增 `postPpiWindow(PpiWindowPayload): PpiWindowResult`，`POST /api/vitals/stream/ppi-window`；新增 `registerFcmToken()` 和 `reportNotificationResponse()` 方法。
+- **推流主路径（90s）**：`polar/HrStreamService.kt` — 前台服务 `onStartCommand` 启动协程循环，每 **90 秒**调用 `PpiStreamWorker.tryStreamOnce(app, lookbackMs=90_000)`；窗口回溯 90 秒；`startStreamLoopIfNeeded()` 幂等，避免重复 `onStartCommand` 叠多个循环。
+- **推流共享逻辑**：`worker/PpiStreamWorker.kt` — `companion object.tryStreamOnce()` 抽取上传核心；返回 `StreamAttemptResult`（SKIPPED / ACCEPTED / FAILED）；质量门控 `n_clean >= 25` 且 `n_clean/n_raw >= 50%`（与服务端 stream_routes / HeartPy 二次门控对齐）。
+- **推流兜底（15min）**：`PpiStreamWorker` 仍注册 WorkManager 15 分钟周期（Service 被杀或未启动时保底）；兜底窗口回溯 **120 秒**；`scheduleRepeating()` 在 `MindBodyApplication.onCreate()` 注册。
+- **关键文件**：
+  - `data/HrvOnDevice.kt`
+  - `data/stream/PpiLiveBuffer.kt`
+  - `data/sync/SyncApiClient.kt`
+  - `worker/PpiStreamWorker.kt`
+  - `polar/HrStreamService.kt`（90s 推流循环）
+  - `polar/PolarBleManager.kt`（修改）
+  - `MindBodyApplication.kt`（修改）
+
+#### 变更记录
+- 2026-06-23：PPI 清洗规则优化 — errorEstimate 过滤、RR 下界 300ms、门控 n_clean≥25 + coverage≥50% (plan: PPI清洗优化)
+- 2026-06-23：推流主路径改为 HrStreamService 90s 协程循环，WorkManager 15min 兜底 (plan: PPI推流90秒循环)
+
+---
+
+### F-P5-001 — FCM 推送通知（Android Phase 5）
+
+**Plan todo**：p5a ~ p5b
+**实现日期**：2026-06-21
+
+#### 已实现方案
+
+- **通知渠道 + 展示**：`notification/PhysioNotificationManager.kt` — 单例 `object`；`ensureChannel()` 幂等建渠道（`physio_feedback`，高优先级）；`show(context, notificationId, stateLabel, message)` 展示带 BigText 的状态通知，含三个操作按钮。
+  - 按钮 1「记录心情」→ `MainActivity`（`nav_target=mood_record`）
+  - 按钮 2「稍后提醒」→ `PhysioNotificationReceiver.ACTION_SNOOZE`（BroadcastReceiver + 服务端回报）
+  - 按钮 3「今天不再」→ `PhysioNotificationReceiver.ACTION_DISMISS`（BroadcastReceiver + 服务端回报）
+- **FCM Messaging Service**：`notification/PhysioFcmService.kt` — 继承 `FirebaseMessagingService`；`onNewToken()` 委托 [FcmTokenRegistrar.registerToken]；`onMessageReceived()` 解析 data payload 并调用 `PhysioNotificationManager.show()`。
+- **FCM Token 主动注册**：`notification/FcmTokenRegistrar.kt` — `MindBodyApplication.onCreate()` 调用 `scheduleStartupRegistration()` 主动 `FirebaseMessaging.getInstance().token` 并注册；保存 Server URL / API Key 时（`DeviceViewModel`）再次触发，避免仅依赖 `onNewToken` 的时序问题。
+- **操作回报 Receiver**：`notification/PhysioNotificationReceiver.kt` — 处理 SNOOZE / DISMISS 广播，IO 协程回报 `reportNotificationResponse()`。
+- **Gradle 依赖**：`app/build.gradle.kts` 添加 `firebase-bom:33.7.0` + `firebase-messaging-ktx`；`build.gradle.kts`（project）添加 `google-services` plugin（`apply false`）。
+- **Manifest 注册**：`PhysioFcmService`（intent-filter: `MESSAGING_EVENT`）+ `PhysioNotificationReceiver`（SNOOZE / DISMISS actions）。
+- **Application 初始化**：`MindBodyApplication.onCreate()` 调用 `PhysioNotificationManager.ensureChannel(this)` 与 `FcmTokenRegistrar.scheduleStartupRegistration(this)`。
+
+#### 激活 FCM 前置步骤（需用户操作）
+
+1. 在 [Firebase Console](https://console.firebase.google.com) 创建项目，添加 Android 应用（包名 `com.owner.mindbody`）。
+2. 下载 `google-services.json`，放到 `mindbody-android/app/` 目录。
+3. 打开 `app/build.gradle.kts`，取消注释 `id("com.google.gms.google-services")` 行。
+4. 服务端 ECS 设置 `FIREBASE_CREDENTIALS_PATH` 环境变量（`push_service.py` 读取）。
+
+#### 关键文件
+
+- `notification/PhysioNotificationManager.kt`
+- `notification/FcmTokenRegistrar.kt`
+- `notification/PhysioFcmService.kt`
+- `notification/PhysioNotificationReceiver.kt`
+- `data/sync/SyncApiClient.kt`（registerFcmToken / reportNotificationResponse）
+- `app/build.gradle.kts`（firebase-bom）
+- `build.gradle.kts`（project，google-services plugin）
+- `AndroidManifest.xml`（PhysioFcmService + PhysioNotificationReceiver）
+- `MindBodyApplication.kt`（ensureChannel + FcmTokenRegistrar）
+- `ui/device/DeviceViewModel.kt`（保存 sync URL/key 时重注册 token）
+
+#### 变更记录
+- 2026-06-21：FCM 启动时主动拉 token 并注册（FcmTokenRegistrar）(F-P5-001)
+- 2026-06-21：实时生理状态检测系统 Android Phase 1 + Phase 5 落地 (plan: 实时生理状态检测系统)

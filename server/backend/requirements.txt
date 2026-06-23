@@ -8,3 +8,15 @@ dashscope==1.22.1
 pydantic-settings==2.7.0
 psycopg2-binary==2.9.10
 apscheduler==3.10.4
+
+# Phase 1–2: HRV 实时分析
+setuptools>=68.0,<82.0    # heartpy 依赖 pkg_resources；82+ 已移除
+heartpy>=1.2.7
+scipy>=1.11.0
+numpy>=1.26.0               # 2.x 可用；trapz 兼容见 hrv_analysis_service.py
+
+# Phase 4: LLM 反馈（硅基流动 OpenAI 兼容 API）
+openai>=1.40.0
+
+# Phase 5: FCM 推送
+firebase-admin>=6.5.0

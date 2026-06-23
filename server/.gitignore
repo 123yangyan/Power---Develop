@@ -1,4 +1,5 @@
 .env
+secrets/
 nginx/certs/*.pem
 nginx/certs/*.key
 __pycache__/

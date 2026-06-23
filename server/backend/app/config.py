@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     api_key: str = ""
 
+    # 实时生理状态检测 — LLM 反馈 (Phase 4，硅基流动 OpenAI 兼容 API)
+    siliconflow_api_key: str = ""
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_model: str = "deepseek-ai/DeepSeek-V3.1-Terminus"
+    llm_feedback_timeout_seconds: float = 10.0
+
+    # Phase 5: FCM 推送 — Firebase Admin 服务账号 JSON 文件路径
+    # 留空时推送不可用，其他功能不受影响
+    firebase_credentials_path: str = ""
+
     database_url: str = "postgresql://recorder:changeme@postgres:5432/recorder"
     redis_url: str = "redis://redis:6379/0"
 

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -46,12 +47,12 @@ fun FloatingIslandNav(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .padding(horizontal = 8.dp, vertical = 16.dp)
             .height(64.dp)
             .clip(MindBodyShapes.NavIsland)
             .background(MindBodyColors.NavBarSurface)
             .border(1.dp, MindBodyColors.NavBarBorder, MindBodyShapes.NavIsland)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -70,7 +71,7 @@ fun FloatingIslandNav(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(width = 48.dp, height = 28.dp)
+                            .size(width = 40.dp, height = 26.dp)
                             .clip(MindBodyShapes.NavPill)
                             .background(
                                 if (selected) MindBodyColors.PrimaryIndigoLight
@@ -83,7 +84,7 @@ fun FloatingIslandNav(
                             contentDescription = tab.label,
                             tint = if (selected) MindBodyColors.PrimaryIndigo
                             else MindBodyColors.OnBackgroundSecondary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     Text(
@@ -100,9 +101,10 @@ fun FloatingIslandNav(
 }
 
 val DefaultNavTabs = listOf(
-    NavTabItem("heart_rate", "心率", Icons.Default.Favorite),
-    NavTabItem("mood_record", "记录", Icons.Default.Edit),
-    NavTabItem("mood_history", "历史", Icons.Default.History),
-    NavTabItem("sensors", "传感器", Icons.Default.GraphicEq),
-    NavTabItem("device", "设备", Icons.Default.Settings)
+    NavTabItem("heart_rate",   "心率",  Icons.Default.Favorite),
+    NavTabItem("physio_state", "状态",  Icons.Default.MonitorHeart),
+    NavTabItem("mood_record",  "记录",  Icons.Default.Edit),
+    NavTabItem("mood_history", "历史",  Icons.Default.History),
+    NavTabItem("sensors",      "传感器", Icons.Default.GraphicEq),
+    NavTabItem("device",       "设备",  Icons.Default.Settings)
 )

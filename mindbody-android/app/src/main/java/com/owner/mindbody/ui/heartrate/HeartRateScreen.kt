@@ -1,23 +1,18 @@
 package com.owner.mindbody.ui.heartrate
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -25,28 +20,37 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.ui.components.ConnectionStatusCapsule
+import com.owner.mindbody.ui.components.HeroIndicator
+import com.owner.mindbody.ui.components.MicroGrid
+import com.owner.mindbody.ui.components.MicroGridItem
 import com.owner.mindbody.ui.components.MindBodySplineChart
+import com.owner.mindbody.ui.components.NarrativeBody
+import com.owner.mindbody.ui.components.NarrativeCaption
+import com.owner.mindbody.ui.components.NarrativeCard
 import com.owner.mindbody.ui.components.PremiumCard
 import com.owner.mindbody.ui.components.SectionHeader
-import com.owner.mindbody.ui.components.StatGrid
-import com.owner.mindbody.ui.components.StatItem
 import com.owner.mindbody.ui.components.StreamStatusBadge
-import com.owner.mindbody.ui.theme.BpmHero
 import com.owner.mindbody.ui.theme.CardTitle
 import com.owner.mindbody.ui.theme.MindBodyColors
 import com.owner.mindbody.ui.theme.MindBodyShapes
 import com.owner.mindbody.ui.theme.StatLabel
 
+/**
+ * 心率页 — 重构为"身体陪伴日记"布局：
+ * - Head  (20%): HeroIndicator（BPM 呼吸环 + 连接状态）
+ * - Middle (50%): NarrativeCard（皮温 + 今日体感文字描述）
+ * - Bottom (30%): MicroGrid（今日心率统计）+ 折叠 SplineChart
+ */
 @Composable
 fun HeartRateScreen(
     viewModel: HeartRateViewModel = viewModel()
@@ -56,6 +60,7 @@ fun HeartRateScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val stats by viewModel.todayStats.collectAsState()
     val chartState by viewModel.chartState.collectAsState()
+    var showChart by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         viewModel.startBackgroundStream()
@@ -65,6 +70,7 @@ fun HeartRateScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MindBodyColors.Background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -77,207 +83,136 @@ fun HeartRateScreen(
             }
         )
 
-        HeartRateHeroCard(
-            bpm = currentHr,
+        // ── HEAD (20%): BPM 呼吸环 Hero ─────────────────────────────────
+        HeroIndicator(
+            primaryLabel = currentHr?.toString() ?: "--",
+            secondaryLabel = connectionLabel(connectionState),
+            accentColor = MindBodyColors.HeartRed,
+            surfaceColor = MindBodyColors.HeartRed.copy(alpha = 0.06f),
+            trackProgress = currentHr?.let { (it / 200f).coerceIn(0f, 1f) } ?: 0f,
+            trackLabel = currentHr?.let { "$it" } ?: "",
+            trackUnitLabel = if (currentHr != null) "BPM" else "",
+            height = 220.dp
+        )
+
+        // ── MIDDLE (50%): 皮温叙事卡 ─────────────────────────────────────
+        SkinTemperatureNarrativeCard(
+            tempCelsius = currentSkinTemp,
             connectionState = connectionState
         )
 
-        SkinTemperatureCard(tempCelsius = currentSkinTemp)
-
-        PremiumCard {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "今日生理负荷", style = CardTitle)
-                Box(
-                    modifier = Modifier
-                        .clip(MindBodyShapes.Badge)
-                        .background(MindBodyColors.Amber.copy(alpha = 0.12f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "24h 缓存",
-                        style = StatLabel.copy(color = MindBodyColors.Amber)
-                    )
-                }
-            }
-            StatGrid(
+        // ── BOTTOM (30%): 今日统计 MicroGrid ─────────────────────────────
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "今日生理负荷",
+                style = CardTitle.copy(color = MindBodyColors.OnBackgroundSecondary)
+            )
+            MicroGrid(
                 items = listOf(
-                    StatItem("样本数", stats.count.toString()),
-                    StatItem("平均值", stats.average?.toString() ?: "--", MindBodyColors.PrimaryIndigo),
-                    StatItem("最高值", stats.max?.toString() ?: "--", MindBodyColors.HeartRed),
-                    StatItem("最低值", stats.min?.toString() ?: "--", MindBodyColors.OnBackgroundSecondary)
+                    MicroGridItem(
+                        label = "样本数",
+                        value = stats.count.toString(),
+                        valueColor = MindBodyColors.OnBackground
+                    ),
+                    MicroGridItem(
+                        label = "平均心率",
+                        value = stats.average?.toString() ?: "--",
+                        unit = "BPM",
+                        valueColor = MindBodyColors.PrimaryIndigo
+                    ),
+                    MicroGridItem(
+                        label = "最高心率",
+                        value = stats.max?.toString() ?: "--",
+                        unit = "BPM",
+                        valueColor = MindBodyColors.HeartRed
+                    ),
+                    MicroGridItem(
+                        label = "最低心率",
+                        value = stats.min?.toString() ?: "--",
+                        unit = "BPM",
+                        valueColor = MindBodyColors.OnBackgroundSecondary
+                    )
                 ),
-                modifier = Modifier.padding(top = 14.dp)
+                columns = 2
             )
         }
 
-        PremiumCard(cornerRadius = 32.dp) {
-            MindBodySplineChart(
-                state = chartState,
-                onPresetSelected = viewModel::setChartPreset,
-                onWindowPan = viewModel::panChartWindow
+        // ── 折叠图表（点击展开）────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showChart = !showChart }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "历史趋势图",
+                style = CardTitle.copy(color = MindBodyColors.OnBackgroundSecondary)
+            )
+            Text(
+                text = if (showChart) "收起 ↑" else "展开 ↓",
+                style = StatLabel.copy(
+                    color = MindBodyColors.CalmTeal,
+                    fontSize = 12.sp
+                )
             )
         }
+
+        AnimatedVisibility(
+            visible = showChart,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            PremiumCard(cornerRadius = 32.dp) {
+                MindBodySplineChart(
+                    state = chartState,
+                    onPresetSelected = viewModel::setChartPreset,
+                    onWindowPan = viewModel::panChartWindow
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun HeartRateHeroCard(
-    bpm: Int?,
+private fun SkinTemperatureNarrativeCard(
+    tempCelsius: Float?,
     connectionState: ConnectionState
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "bpmPulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.02f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-    val waveRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = LinearEasing)
-        ),
-        label = "waveRotation"
-    )
+    val narrativeText = when {
+        connectionState != ConnectionState.CONNECTED ->
+            "Polar Loop 当前未连接，无法获取实时皮肤温度数据。请确认手环佩戴并开启蓝牙。"
+        tempCelsius == null ->
+            "正在等待温度传感器数据，请保持手环贴合手腕。"
+        tempCelsius < 33f ->
+            "当前皮肤温度 ${"%.1f".format(tempCelsius)}°C，偏低。可能处于安静或环境温度较低的状态。"
+        tempCelsius > 36.5f ->
+            "当前皮肤温度 ${"%.1f".format(tempCelsius)}°C，略偏高。可能正在运动或处于较温暖的环境中。"
+        else ->
+            "当前皮肤温度 ${"%.1f".format(tempCelsius)}°C，处于正常舒适区间（33–36.5°C）。"
+    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MindBodyShapes.HeroCard)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        MindBodyColors.HeroGradientStart,
-                        MindBodyColors.HeroGradientMid,
-                        MindBodyColors.HeroGradientEnd
-                    )
-                )
-            )
-            .border(1.dp, MindBodyColors.CardBorder, MindBodyShapes.HeroCard)
-            .padding(28.dp),
-        contentAlignment = Alignment.Center
+    NarrativeCard(
+        accentColor = MindBodyColors.Amber,
+        badgeLabel = if (tempCelsius != null) "${"%.1f".format(tempCelsius)}°C · 皮肤温度" else "皮肤温度"
     ) {
-        Box(
-            modifier = Modifier
-                .size(192.dp)
-                .offset(x = (-20).dp, y = (-10).dp)
-                .scale(1.2f)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            MindBodyColors.HeartRed.copy(alpha = 0.12f),
-                            MindBodyColors.HeartRed.copy(alpha = 0f)
-                        )
-                    ),
-                    shape = MindBodyShapes.HeroCard
-                )
-        )
-        Box(
-            modifier = Modifier
-                .size(128.dp)
-                .offset(x = 30.dp, y = 20.dp)
-                .scale(1f + waveRotation / 3600f)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            MindBodyColors.PrimaryIndigo.copy(alpha = 0.1f),
-                            MindBodyColors.PrimaryIndigo.copy(alpha = 0f)
-                        )
-                    ),
-                    shape = MindBodyShapes.HeroCard
-                )
-        )
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                modifier = Modifier.scale(pulseScale)
-            ) {
-                Text(
-                    text = bpm?.toString() ?: "--",
-                    style = BpmHero
-                )
-                Text(
-                    text = "BPM",
-                    style = StatLabel.copy(
-                        fontSize = 14.sp,
-                        color = MindBodyColors.PrimaryIndigo
-                    ),
-                    modifier = Modifier.padding(start = 6.dp, bottom = 14.dp)
-                )
-            }
+        NarrativeBody(text = narrativeText)
+        if (connectionState == ConnectionState.CONNECTED) {
+            Spacer(modifier = Modifier.height(8.dp))
             ConnectionStatusCapsule(
-                statusText = connectionLabel(connectionState),
-                isActive = connectionState == ConnectionState.CONNECTED,
-                modifier = Modifier.padding(top = 16.dp)
+                statusText = "Loop 手腕表面温度 · 实时",
+                isActive = true
             )
         }
     }
 }
 
 private fun connectionLabel(state: ConnectionState): String = when (state) {
-    ConnectionState.CONNECTED -> "连接就绪 • 正在采集"
+    ConnectionState.CONNECTED -> "连接就绪 · 正在采集"
     ConnectionState.CONNECTING -> "连接中…"
     ConnectionState.BLE_OFF -> "请打开手机蓝牙"
     ConnectionState.DISCONNECTED -> "未连接设备"
-}
-
-/** 实时皮肤温度卡片，与 Hero 卡、统计卡风格一致。 */
-@Composable
-private fun SkinTemperatureCard(tempCelsius: Float?) {
-    PremiumCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(text = "皮肤温度", style = CardTitle)
-                Text(
-                    text = "Loop 手腕表面温度",
-                    style = StatLabel.copy(color = MindBodyColors.OnBackgroundSecondary),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(MindBodyShapes.Badge)
-                    .background(MindBodyColors.Amber.copy(alpha = 0.12f))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-                Text(
-                    text = "实时",
-                    style = StatLabel.copy(color = MindBodyColors.Amber)
-                )
-            }
-        }
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            modifier = Modifier.padding(top = 16.dp)
-        ) {
-            Text(
-                text = tempCelsius?.let { "%.1f".format(it) } ?: "--",
-                style = BpmHero.copy(
-                    fontSize = 48.sp,
-                    color = MindBodyColors.Amber
-                )
-            )
-            Text(
-                text = "°C",
-                style = StatLabel.copy(
-                    fontSize = 14.sp,
-                    color = MindBodyColors.Amber
-                ),
-                modifier = Modifier.padding(start = 6.dp, bottom = 10.dp)
-            )
-        }
-    }
 }

@@ -1,0 +1,137 @@
+package com.owner.mindbody.ui.physio
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.owner.mindbody.MindBodyApplication
+import com.owner.mindbody.data.LlmFeedbackEntry
+import com.owner.mindbody.data.PhysioStateSummary
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+
+/**
+ * 生理状态页 ViewModel。
+ *
+ * 短期策略（Phase 2/3 过渡期）：每 30s 轮询服务端 API，
+ * 将结果写入 AppStorage 门面 Flow，UI 通过 Flow 收到更新。
+ * 待 Phase 3 完成后可无缝改为订阅 Room Cache Flow。
+ */
+class PhysioStateViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val storage = (application as MindBodyApplication).storage
+    private val httpClient = OkHttpClient()
+
+    val latestPhysioState: StateFlow<PhysioStateSummary?> =
+        storage.latestPhysioState.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null
+        )
+
+    val feedbackHistory: StateFlow<List<LlmFeedbackEntry>> =
+        storage.feedbackHistory.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    private var pollJob: Job? = null
+
+    fun startPolling() {
+        if (pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch {
+            while (isActive) {
+                fetchPhysioState()
+                delay(POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollJob?.cancel()
+        pollJob = null
+    }
+
+    private suspend fun fetchPhysioState() {
+        try {
+            val baseUrl = storage.syncPreferences.baseUrl.first()
+            val apiKey = storage.syncPreferences.apiKey.first()
+            val deviceId = storage.syncPreferences.deviceId.first()
+            if (baseUrl.isBlank() || apiKey.isBlank() || deviceId.isBlank()) return
+
+            val request = Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/vitals/stream/status?device_id=$deviceId")
+                .addHeader("X-API-Key", apiKey)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return
+                val body = response.body?.string() ?: return
+                val summary = parsePhysioStateSummary(body)
+                storage.updatePhysioState(summary)
+
+                val feedback = parseFeedbackHistory(body)
+                if (feedback.isNotEmpty()) {
+                    storage.updateFeedbackHistory(feedback)
+                }
+            }
+        } catch (_: Exception) {
+            // 网络失败静默处理，保留上次状态
+        }
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MS = 30_000L
+    }
+}
+
+// ── 简易 JSON 解析（Phase 3 替换为 Moshi/Gson）────────────────────────────────
+
+private fun parsePhysioStateSummary(json: String): PhysioStateSummary? = runCatching {
+    val obj = JSONObject(json)
+    val latest = obj.optJSONObject("latest_classification") ?: return null
+    val hrv = obj.optJSONObject("latest_hrv")
+    val feedback = obj.optJSONObject("latest_feedback")
+
+    PhysioStateSummary(
+        stateLabel = latest.optString("state_label", "baseline_building"),
+        anxietyScore = latest.optDouble("anxiety_score", 0.0).toFloat(),
+        rmssd = hrv?.optDouble("rmssd")?.toFloat(),
+        sdnn = hrv?.optDouble("sdnn")?.toFloat(),
+        lfHf = hrv?.optDouble("lf_hf")?.toFloat(),
+        breathingRate = hrv?.optDouble("breathing_rate")?.toFloat(),
+        sampEn = hrv?.optDouble("sampen")?.toFloat(),
+        dfaAlpha1 = hrv?.optDouble("dfa_alpha1")?.toFloat(),
+        hrSurgeFlag = hrv?.optBoolean("hr_surge_flag") ?: false,
+        windowId = latest.optLong("window_id").takeIf { it != 0L },
+        timestampMs = latest.optLong("created_at_ms", System.currentTimeMillis()),
+        llmMessage = feedback?.optString("message"),
+        baselineWindowCount = obj.optInt("window_count", 0),
+        lastStreamTs = obj.optLong("last_stream_ts").takeIf { it != 0L }
+    )
+}.getOrNull()
+
+private fun parseFeedbackHistory(json: String): List<LlmFeedbackEntry> = runCatching {
+    val arr = JSONObject(json).optJSONArray("feedback_history") ?: return@runCatching emptyList()
+    (0 until arr.length()).map { i ->
+        val item = arr.getJSONObject(i)
+        LlmFeedbackEntry(
+            id = item.optLong("id"),
+            timestampMs = item.optLong("created_at_ms", System.currentTimeMillis()),
+            stateLabel = item.optString("state_label", "normal"),
+            anxietyScore = item.optDouble("anxiety_score", 0.0).toFloat(),
+            message = item.optString("message", ""),
+            tone = item.optString("tone", ""),
+            userResponse = item.optString("user_response").takeIf { it.isNotEmpty() }
+        )
+    }
+}.getOrElse { emptyList() }

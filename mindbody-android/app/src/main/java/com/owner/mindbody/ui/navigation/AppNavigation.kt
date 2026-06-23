@@ -26,6 +26,8 @@ import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
 import com.owner.mindbody.ui.mood.MoodHistoryScreen
 import com.owner.mindbody.ui.mood.MoodRecordScreen
+import com.owner.mindbody.ui.physio.FeedbackHistoryListScreen
+import com.owner.mindbody.ui.physio.PhysioStateScreen
 import com.owner.mindbody.ui.sensors.SensorsScreen
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -34,10 +36,12 @@ import com.owner.mindbody.ui.theme.MindBodyColors
 
 sealed class AppRoute(val route: String, val label: String) {
     data object HeartRate : AppRoute("heart_rate", "心率")
+    data object PhysioState : AppRoute("physio_state", "状态")
     data object MoodRecord : AppRoute("mood_record", "记录")
     data object MoodHistory : AppRoute("mood_history", "历史")
     data object Sensors : AppRoute("sensors", "传感器")
     data object Device : AppRoute("device", "设备")
+    data object FeedbackHistory : AppRoute("feedback_history", "反馈历史")
     data object DeveloperLog : AppRoute("developer_log", "运行日志")
     data object DeveloperStorage : AppRoute("developer_storage", "storage 看板")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
@@ -53,6 +57,7 @@ fun AppNavigation(initialRoute: String? = null) {
 
     val bottomRoutes = listOf(
         AppRoute.HeartRate,
+        AppRoute.PhysioState,
         AppRoute.MoodRecord,
         AppRoute.MoodHistory,
         AppRoute.Sensors,
@@ -65,7 +70,7 @@ fun AppNavigation(initialRoute: String? = null) {
     val navBottomPadding = when {
         !showBottomBar -> 0.dp
         currentRoute == AppRoute.MoodRecord.route && keyboardVisible -> 0.dp
-        else -> 88.dp
+        else -> 96.dp
     }
 
     LaunchedEffect(initialRoute) {
@@ -85,7 +90,7 @@ fun AppNavigation(initialRoute: String? = null) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MindBodyColors.Background)
+            .background(MindBodyColors.Background)  // Apple Gray #F2F2F7
             .statusBarsPadding()
     ) {
         NavHost(
@@ -97,6 +102,27 @@ fun AppNavigation(initialRoute: String? = null) {
         ) {
             composable(AppRoute.HeartRate.route) {
                 HeartRateScreen()
+            }
+            composable(AppRoute.PhysioState.route) {
+                PhysioStateScreen(
+                    onNavigateToFeedbackHistory = {
+                        navController.navigate(AppRoute.FeedbackHistory.route)
+                    }
+                )
+            }
+            composable(AppRoute.FeedbackHistory.route) {
+                FeedbackHistoryListScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToMoodRecord = {
+                        navController.navigate(AppRoute.MoodRecord.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             composable(AppRoute.MoodRecord.route) {
                 MoodRecordScreen()

@@ -49,7 +49,10 @@ import com.owner.mindbody.ui.mood.MoodSettingsSection
 import com.owner.mindbody.BuildConfig
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
+import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.ui.components.BleModeRadioGroup
+import com.owner.mindbody.ui.components.NarrativeCard
+import com.owner.mindbody.ui.components.NarrativeCaption
 import com.owner.mindbody.ui.components.PremiumCard
 import com.owner.mindbody.ui.components.SectionHeader
 import com.owner.mindbody.ui.theme.CardTitle
@@ -166,6 +169,11 @@ fun DeviceScreen(
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
+        }
+
+        // ── 实时生理分析推流状态卡（仅 BLE 已连接时显示）────────────────────
+        if (connectionState == ConnectionState.CONNECTED) {
+            StreamAnalysisCard()
         }
 
         PremiumCard {
@@ -587,5 +595,91 @@ fun DeviceSyncStatusRow(
             text = label,
             style = StatLabel.copy(color = tint)
         )
+    }
+}
+
+// ── 实时生理分析推流状态卡 ─────────────────────────────────────────────────────
+
+@Composable
+private fun StreamAnalysisCard() {
+    val context = LocalContext.current
+    val storage = (context.applicationContext as MindBodyApplication).storage
+    val physioState by storage.latestPhysioState.collectAsState(initial = null)
+
+    val stateLabel = physioState?.stateLabel ?: "baseline_building"
+    val accentColor = when (stateLabel) {
+        "calm" -> MindBodyColors.CalmTeal
+        "normal" -> MindBodyColors.PrimaryIndigo
+        "elevated" -> MindBodyColors.StressAmber
+        "anxious" -> MindBodyColors.AnxietyRose
+        "high_anxiety" -> MindBodyColors.HighAlertRed
+        else -> MindBodyColors.OceanBlue
+    }
+    val zhLabel = when (stateLabel) {
+        "calm" -> "平静"
+        "normal" -> "正常"
+        "elevated" -> "应激升高"
+        "anxious" -> "疑似焦虑"
+        "high_anxiety" -> "高度焦虑"
+        else -> "正在建立基线"
+    }
+
+    val windowCount = physioState?.baselineWindowCount ?: 0
+    val lastStreamTs = physioState?.lastStreamTs
+
+    NarrativeCard(
+        accentColor = accentColor,
+        badgeLabel = "实时生理分析"
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            NarrativeCaption(text = "当前状态")
+            Text(
+                text = zhLabel,
+                style = StatLabel.copy(color = accentColor, fontSize = 12.sp)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            NarrativeCaption(text = "基线窗口")
+            Text(
+                text = "$windowCount / 50",
+                style = StatLabel.copy(
+                    color = MindBodyColors.OnBackground,
+                    fontSize = 12.sp
+                )
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            NarrativeCaption(text = "最近推流")
+            Text(
+                text = lastStreamTs?.let { formatStreamTime(it) } ?: "等待首次推流",
+                style = StatLabel.copy(
+                    color = if (lastStreamTs != null) MindBodyColors.Emerald
+                    else MindBodyColors.OnBackgroundSecondary,
+                    fontSize = 12.sp
+                )
+            )
+        }
+    }
+}
+
+private fun formatStreamTime(tsMs: Long): String {
+    val diffMs = System.currentTimeMillis() - tsMs
+    return when {
+        diffMs < 60_000L -> "刚刚"
+        diffMs < 3_600_000L -> "${diffMs / 60_000L} 分钟前"
+        else -> "${diffMs / 3_600_000L} 小时前"
     }
 }

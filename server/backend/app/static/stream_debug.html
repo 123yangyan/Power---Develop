@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 1 + Phase 2 · PPI 接入 & HRV 分析</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1923; color: #e0e6ed; min-height: 100vh; line-height: 1.5; }
+.header { padding: 20px 24px; background: #1a2a3a; border-bottom: 1px solid #2a3a4a; }
+.header h1 { font-size: 22px; color: #7ec8a0; margin-bottom: 6px; }
+.header p { font-size: 13px; color: #8a9aaa; max-width: 720px; }
+.controls { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+button { padding: 7px 14px; border-radius: 6px; border: 1px solid #3a7a5a; background: #2a5a4a; color: #e0e6ed; cursor: pointer; font-size: 13px; }
+button:hover { background: #3a7a5a; }
+label { font-size: 12px; color: #8a9aaa; display: flex; align-items: center; gap: 6px; }
+
+.info-box { margin: 16px 24px; padding: 14px 18px; background: #152030; border: 1px solid #2a4050; border-radius: 10px; font-size: 13px; color: #b0bec8; }
+.info-box strong { color: #7ec8a0; }
+.info-box ul { margin: 8px 0 0 18px; }
+.info-box li { margin: 4px 0; }
+
+.stats { display: flex; gap: 12px; padding: 0 24px 16px; flex-wrap: wrap; }
+.stat { background: #1a2a3a; border-radius: 10px; padding: 14px 18px; min-width: 150px; flex: 1; }
+.stat .num { font-size: 26px; font-weight: 700; color: #7ec8a0; }
+.stat .txt { font-size: 12px; color: #6a7a8a; margin-top: 4px; }
+.stat.warn .num { color: #f0a060; }
+
+.section { padding: 0 24px 24px; }
+.section h2 { font-size: 14px; color: #8a9aaa; margin-bottom: 10px; }
+
+.device-card { background: #1a2a3a; border-radius: 10px; margin-bottom: 10px; overflow: hidden; border: 1px solid #243444; }
+.device-head { padding: 14px 16px; display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr auto; gap: 10px; align-items: center; cursor: pointer; }
+.device-head:hover { background: #1e3040; }
+.device-id { font-family: monospace; font-size: 13px; color: #d0dae4; word-break: break-all; }
+.meta { font-size: 12px; color: #8a9aaa; }
+.meta .val { display: block; color: #e0e6ed; font-size: 14px; margin-top: 2px; }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.badge.ok { background: #1a3a2a; color: #7ec8a0; }
+.badge.warn { background: #2a2418; color: #f0a060; }
+.badge.bad { background: #2a1a1a; color: #e85d75; }
+
+.expand-btn { font-size: 12px; color: #7ec8a0; white-space: nowrap; }
+
+.detail { display: none; padding: 0 16px 16px; border-top: 1px solid #243444; }
+.detail.open { display: block; }
+
+.pkg { background: #121e2a; border: 1px solid #243444; border-radius: 8px; padding: 12px 14px; margin-top: 10px; }
+.pkg-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.pkg-time { font-size: 13px; color: #d0dae4; }
+.pkg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; font-size: 12px; }
+.pkg-item { background: #0f1923; border-radius: 6px; padding: 8px 10px; }
+.pkg-item .k { color: #6a7a8a; font-size: 11px; }
+.pkg-item .v { color: #e0e6ed; margin-top: 2px; font-size: 13px; }
+.rr-preview { margin-top: 8px; font-family: monospace; font-size: 12px; color: #9ab0c0; }
+.rr-toggle { margin-top: 6px; font-size: 11px; color: #7ec8a0; cursor: pointer; user-select: none; }
+.rr-toggle:hover { text-decoration: underline; }
+.rr-full { display: none; margin-top: 4px; word-break: break-all; }
+.rr-full.open { display: block; }
+
+.hrv-section { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #2a4050; }
+.hrv-title { font-size: 12px; color: #7ec8a0; font-weight: 600; margin-bottom: 10px; }
+.hrv-pipeline { display: grid; grid-template-columns: 1fr auto 1fr auto 1.4fr; gap: 8px; align-items: stretch; }
+.hrv-stage { background: #0f1923; border: 1px solid #243444; border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.hrv-stage-title { font-size: 11px; color: #6a7a8a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.hrv-arrow { display: flex; align-items: center; color: #4a6a7a; font-size: 18px; padding: 0 2px; }
+.hrv-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+.hrv-metric { background: #121e2a; border-radius: 5px; padding: 6px 8px; }
+.hrv-metric .k { font-size: 10px; color: #6a7a8a; }
+.hrv-metric .v { font-size: 13px; margin-top: 2px; font-weight: 500; }
+.hrv-metric .v.good { color: #7ec8a0; }
+.hrv-metric .v.warn { color: #f0a060; }
+.hrv-metric .v.bad { color: #e85d75; }
+.hrv-group-label { font-size: 10px; color: #5a7a8a; margin: 8px 0 4px; grid-column: 1 / -1; }
+.hrv-empty { font-size: 12px; color: #5a6a7a; padding: 10px 12px; background: #0f1923; border-radius: 6px; border: 1px solid #243444; }
+
+.empty { text-align: center; padding: 48px 24px; color: #5a6a7a; font-size: 14px; }
+.error { margin: 16px 24px; padding: 12px 16px; background: #2a1a1a; border: 1px solid #5a3a3a; border-radius: 8px; color: #e85d75; display: none; }
+.error.show { display: block; }
+.foot { text-align: right; padding: 0 24px 16px; font-size: 11px; color: #4a5a6a; }
+
+@media (max-width: 900px) {
+  .device-head { grid-template-columns: 1fr 1fr; }
+  .hrv-pipeline { grid-template-columns: 1fr; }
+  .hrv-arrow { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Phase 1 + Phase 2：数据接入 & HRV 分析</h1>
+  <p>检查 Android 推流入库（Phase 1），以及服务端 HeartPy HRV 分析管线输出（Phase 2）。</p>
+  <div class="controls">
+    <label><input type="checkbox" id="autoRefresh" checked> 自动刷新 (30s)</label>
+    <button onclick="loadData()">立即刷新</button>
+  </div>
+</div>
+
+<div class="info-box">
+  <strong>你在看什么？</strong>
+  <ul>
+    <li>手机每 <strong>60–120 秒</strong> 发一包 RR 间期数据（ms）</li>
+    <li>Phase 1 门控：<strong>n_clean &lt; 20</strong> 直接拒收，页面上看不到被拒的包</li>
+    <li>Phase 2 分析：HeartPy quotient-filter 清洗 → 时域/频域/Poincaré/SampEn/DFA → 写入 <code>hrv_analysis_results</code></li>
+    <li>Phase 2 质量门控：清洗后 <strong>n_clean &lt; 30</strong> 或 <strong>覆盖率 &lt; 60%</strong> → 不产出 HRV 结果</li>
+  </ul>
+</div>
+
+<div class="error" id="error"></div>
+
+<div class="stats" id="stats"></div>
+<div class="foot" id="foot"></div>
+
+<div class="section">
+  <h2>设备推流情况</h2>
+  <div id="devices"></div>
+</div>
+
+<script>
+let timer = null;
+let expanded = null;
+
+const HRV_MIN_CLEAN = 30;
+const HRV_MIN_COVERAGE = 60;
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function fmtDuration(sec) {
+  if (sec == null) return '—';
+  if (sec < 60) return sec + ' 秒';
+  return Math.round(sec / 60) + ' 分钟';
+}
+
+function fmtNum(v, digits) {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (Number.isNaN(n)) return '—';
+  return n.toFixed(digits != null ? digits : 1);
+}
+
+function badge(health) {
+  const map = {
+    flowing: ['ok', '正常推流'],
+    stale: ['warn', '超过1小时未收到'],
+    no_data: ['bad', '暂无数据'],
+  };
+  const [cls, label] = map[health] || ['bad', health];
+  return '<span class="badge ' + cls + '">' + label + '</span>';
+}
+
+function gateBadge(passed, nClean, minClean) {
+  if (passed) return '<span class="badge ok">合格 ≥' + minClean + '</span>';
+  return '<span class="badge bad">不合格 &lt;' + minClean + ' (' + nClean + ')</span>';
+}
+
+function hrvGateBadge(hrv) {
+  const ok = hrv.n_clean >= HRV_MIN_CLEAN && (hrv.coverage_pct == null || hrv.coverage_pct >= HRV_MIN_COVERAGE);
+  if (ok) return '<span class="badge ok">通过 ≥' + HRV_MIN_CLEAN + ' & ≥' + HRV_MIN_COVERAGE + '%</span>';
+  return '<span class="badge bad">未通过</span>';
+}
+
+function metricClass(name, val) {
+  if (val == null) return '';
+  const n = Number(val);
+  if (Number.isNaN(n)) return '';
+  switch (name) {
+    case 'rmssd':
+      if (n < 20) return 'bad';
+      if (n < 40) return 'warn';
+      return 'good';
+    case 'lf_hf':
+      if (n < 0.5) return 'warn';
+      if (n > 2.0) return 'bad';
+      return 'good';
+    case 'sampen':
+      if (n < 0.8) return 'bad';
+      return 'good';
+    case 'dfa_alpha1':
+      if (n < 0.7 || n > 1.3) return 'bad';
+      return 'good';
+    default:
+      return '';
+  }
+}
+
+function metricHtml(label, name, val, unit, digits) {
+  const cls = metricClass(name, val);
+  const display = fmtNum(val, digits);
+  const suffix = unit && display !== '—' ? ' ' + unit : '';
+  return '<div class="hrv-metric"><div class="k">' + esc(label) + '</div><div class="v' + (cls ? ' ' + cls : '') + '">' + esc(display + suffix) + '</div></div>';
+}
+
+function renderHrvSection(w, idx) {
+  if (!w.hrv) {
+    return '<div class="hrv-section"><div class="hrv-title">HRV 分析结果</div>'
+      + '<div class="hrv-empty">HRV 分析未产出（质量门控不达标或分析异常）</div></div>';
+  }
+
+  const h = w.hrv;
+  const rrId = 'rr-' + idx;
+  const hasMore = w.rr_count > w.rr_preview_ms.length;
+
+  const stage1 = ''
+    + '<div class="hrv-stage"><div class="hrv-stage-title">① 输入</div>'
+    + '<div class="hrv-metrics">'
+    + metricHtml('原始节拍 n_raw', null, w.n_raw, null, 0)
+    + metricHtml('RR 数量', null, w.rr_count, '个', 0)
+    + '</div>'
+    + (w.rr_preview_ms && w.rr_preview_ms.length
+      ? '<div class="rr-preview">RR (ms): [' + w.rr_preview_ms.join(', ') + (hasMore ? ', …' : '') + ']</div>'
+        + (hasMore ? '<div class="rr-toggle" onclick="toggleRr(\'' + rrId + '\', this)">展开全部 RR ▾</div>'
+          + '<div class="rr-full" id="' + rrId + '">[' + w.rr_preview_ms.join(', ') + ', … 共 ' + w.rr_count + ' 个]</div>' : '')
+      : '')
+    + '</div>';
+
+  const stage2 = ''
+    + '<div class="hrv-stage"><div class="hrv-stage-title">② HeartPy 清洗</div>'
+    + '<div class="hrv-metrics">'
+    + metricHtml('清洗后 n_clean', null, h.n_clean, null, 0)
+    + metricHtml('覆盖率', null, h.coverage_pct, '%', 1)
+    + '</div>'
+    + '<div style="margin-top:8px">' + hrvGateBadge(h) + '</div>'
+    + '</div>';
+
+  const stage3 = ''
+    + '<div class="hrv-stage"><div class="hrv-stage-title">③ 输出指标</div>'
+    + '<div class="hrv-metrics">'
+    + '<div class="hrv-group-label">时域</div>'
+    + metricHtml('BPM', null, h.bpm, null, 1)
+    + metricHtml('RMSSD', 'rmssd', h.rmssd, 'ms', 1)
+    + metricHtml('SDNN', null, h.sdnn, 'ms', 1)
+    + metricHtml('PNN20', null, h.pnn20, null, 4)
+    + metricHtml('PNN50', null, h.pnn50, null, 4)
+    + '<div class="hrv-group-label">频域</div>'
+    + metricHtml('LF', null, h.lf, null, 2)
+    + metricHtml('HF', null, h.hf, null, 2)
+    + metricHtml('LF/HF', 'lf_hf', h.lf_hf, null, 2)
+    + metricHtml('VLF', null, h.vlf, null, 2)
+    + '<div class="hrv-group-label">非线性</div>'
+    + metricHtml('SD1', null, h.sd1, 'ms', 1)
+    + metricHtml('SD2', null, h.sd2, 'ms', 1)
+    + metricHtml('SD1/SD2', null, h.sd1_sd2, null, 4)
+    + metricHtml('SampEn', 'sampen', h.sampen, null, 3)
+    + metricHtml('DFA α1', 'dfa_alpha1', h.dfa_alpha1, null, 4)
+    + '<div class="hrv-group-label">其他</div>'
+    + metricHtml('呼吸率', null, h.breathing_rate, '次/分', 1)
+    + '<div class="hrv-metric"><div class="k">HR 突升</div><div class="v' + (h.hr_surge_flag ? ' bad' : ' good') + '">'
+    + (h.hr_surge_flag ? '⚠ 是' : '否') + '</div></div>'
+    + '</div></div>';
+
+  return '<div class="hrv-section"><div class="hrv-title">HRV 分析结果</div>'
+    + '<div class="hrv-pipeline">' + stage1 + '<div class="hrv-arrow">→</div>' + stage2 + '<div class="hrv-arrow">→</div>' + stage3 + '</div></div>';
+}
+
+function toggleRr(id, el) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const open = box.classList.toggle('open');
+  el.textContent = open ? '收起 RR ▴' : '展开全部 RR ▾';
+}
+
+async function loadData() {
+  const err = document.getElementById('error');
+  err.classList.remove('show');
+  try {
+    const resp = await fetch('/api/vitals/stream/debug/overview');
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + (text.slice(0, 120) || resp.statusText));
+    }
+    const body = await resp.json();
+    if (body.code !== 0) throw new Error(body.message || '请求失败');
+    renderOverview(body.data);
+    document.getElementById('foot').textContent = '最后刷新：' + new Date().toLocaleTimeString();
+  } catch (e) {
+    err.textContent = '加载失败：' + e.message;
+    err.classList.add('show');
+  }
+}
+
+function renderOverview(data) {
+  const active = data.active_devices_1h;
+  document.getElementById('stats').innerHTML =
+    '<div class="stat' + (active === 0 ? ' warn' : '') + '"><div class="num">' + active + '</div><div class="txt">过去1小时有推流的设备</div></div>'
+    + '<div class="stat"><div class="num">' + data.total_windows_1h + '</div><div class="txt">过去1小时收到的包</div></div>'
+    + '<div class="stat"><div class="num" style="font-size:16px;padding-top:8px">' + fmtTime(data.last_received_at) + '</div><div class="txt">全站最近一次收到</div></div>';
+
+  const box = document.getElementById('devices');
+  if (!data.devices || data.devices.length === 0) {
+    box.innerHTML = '<div class="empty">还没有任何入库数据<br><br>请确认：手机已连 Polar 带、已开 PPI 推流、且 n_clean ≥ ' + data.gate_min_n_clean + '</div>';
+    return;
+  }
+
+  box.innerHTML = data.devices.map(d => `
+    <div class="device-card">
+      <div class="device-head" onclick="toggle('${esc(d.device_id)}')">
+        <div>
+          <div class="device-id">${esc(d.device_id)}</div>
+          <div style="margin-top:6px">${badge(d.health)}</div>
+        </div>
+        <div class="meta">最近收到<span class="val">${fmtTime(d.last_received_at)}</span></div>
+        <div class="meta">窗口时长<span class="val">${fmtDuration(d.last_window_duration_sec)}</span></div>
+        <div class="meta">有效心跳数 n_clean<span class="val">${d.last_n_clean ?? '—'} ${gateBadge(d.gate_passed, d.last_n_clean, data.gate_min_n_clean)}</span></div>
+        <div class="meta">1小时内<span class="val">${d.windows_last_hour} 包</span></div>
+        <div class="expand-btn">查看最近包 ▾</div>
+      </div>
+      <div class="detail" id="detail-${escAttr(d.device_id)}"></div>
+    </div>
+  `).join('');
+}
+
+async function toggle(deviceId) {
+  const panel = document.getElementById('detail-' + deviceId);
+  if (!panel) return;
+
+  if (expanded === deviceId) {
+    panel.classList.remove('open');
+    expanded = null;
+    return;
+  }
+
+  if (expanded) {
+    const old = document.getElementById('detail-' + expanded);
+    if (old) old.classList.remove('open');
+  }
+
+  expanded = deviceId;
+  panel.classList.add('open');
+  panel.innerHTML = '<div class="empty" style="padding:20px">加载中…</div>';
+
+  try {
+    const resp = await fetch('/api/vitals/stream/debug/device/' + encodeURIComponent(deviceId) + '?limit=10');
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + (text.slice(0, 120) || resp.statusText));
+    }
+    const body = await resp.json();
+    if (body.code !== 0) throw new Error(body.message || '请求失败');
+    renderDetail(panel, body.data);
+  } catch (e) {
+    panel.innerHTML = '<div class="empty" style="color:#e85d75">加载失败：' + esc(e.message) + '</div>';
+  }
+}
+
+function renderDetail(panel, data) {
+  if (!data.windows || data.windows.length === 0) {
+    panel.innerHTML = '<div class="empty">该设备暂无入库记录</div>';
+    return;
+  }
+
+  panel.innerHTML = '<div style="padding-top:12px;font-size:12px;color:#6a7a8a">最近 ' + data.windows.length + ' 包（共入库 ' + data.total_windows + ' 包）</div>'
+    + data.windows.map((w, i) => `
+      <div class="pkg">
+        <div class="pkg-head">
+          <div class="pkg-time">#${i + 1} · 收到 ${fmtTime(w.received_at)}</div>
+          ${gateBadge(w.gate_passed, w.n_clean, data.gate_min_n_clean ?? 25)}
+        </div>
+        <div class="pkg-grid">
+          <div class="pkg-item"><div class="k">采集时段</div><div class="v">${fmtTime(w.window_start)} → ${fmtTime(w.window_end)}</div></div>
+          <div class="pkg-item"><div class="k">窗口时长</div><div class="v">${fmtDuration(w.duration_sec)}</div></div>
+          <div class="pkg-item"><div class="k">原始节拍 n_raw</div><div class="v">${w.n_raw}</div></div>
+          <div class="pkg-item"><div class="k">清洗后 n_clean</div><div class="v">${w.n_clean}</div></div>
+          <div class="pkg-item"><div class="k">RR 间期数量</div><div class="v">${w.rr_count} 个</div></div>
+          <div class="pkg-item"><div class="k">运动状态</div><div class="v">${esc(w.motion_label)}</div></div>
+          <div class="pkg-item"><div class="k">设备端 RMSSD</div><div class="v">${w.on_device_rmssd ?? '—'} ms</div></div>
+          <div class="pkg-item"><div class="k">设备端 SDNN</div><div class="v">${w.on_device_sdnn ?? '—'} ms</div></div>
+        </div>
+        ${renderHrvSection(w, i)}
+      </div>
+    `).join('');
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) { return esc(s).replace(/"/g,'&quot;'); }
+
+function startAuto() {
+  if (timer) clearInterval(timer);
+  if (document.getElementById('autoRefresh').checked) {
+    timer = setInterval(loadData, 30000);
+  }
+}
+
+document.getElementById('autoRefresh').addEventListener('change', startAuto);
+window.addEventListener('DOMContentLoaded', () => { loadData(); startAuto(); });
+</script>
+</body>
+</html>

@@ -10,9 +10,11 @@ import com.owner.mindbody.data.sync.SyncApiClient
 import com.owner.mindbody.polar.ConnectionMode
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
+import com.owner.mindbody.notification.FcmTokenRegistrar
 import com.owner.mindbody.worker.SyncWorker
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -100,11 +102,19 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     fun setConnectionMode(mode: ConnectionMode) = polar.setConnectionMode(mode)
 
     fun setSyncBaseUrl(url: String) {
-        viewModelScope.launch { app.storage.syncPreferences.setBaseUrl(url) }
+        viewModelScope.launch {
+            app.storage.syncPreferences.setBaseUrl(url)
+            if (url.isNotBlank()) FcmTokenRegistrar.fetchAndRegister(app)
+        }
     }
 
     fun setSyncApiKey(key: String) {
-        viewModelScope.launch { app.storage.syncPreferences.setApiKey(key) }
+        viewModelScope.launch {
+            app.storage.syncPreferences.setApiKey(key)
+            if (key.isNotBlank() && app.storage.syncPreferences.baseUrl.first().isNotBlank()) {
+                FcmTokenRegistrar.fetchAndRegister(app)
+            }
+        }
     }
 
     fun setSyncEnabled(enabled: Boolean) {

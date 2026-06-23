@@ -7,18 +7,38 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.owner.mindbody.MainActivity
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.R
-import kotlinx.coroutines.runBlocking
+import com.owner.mindbody.worker.PpiStreamWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
- * 前台服务：App 切到后台时保持 BLE 心率采集不被系统杀死。
+ * 前台服务：App 切到后台时保持 BLE 心率采集不被系统杀死；
+ * 同时每 90 秒将 PPI 窗口推送到分析服务端（主推流路径）。
  */
 class HrStreamService : Service() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var streamLoopJob: Job? = null
+
+    /**
+     * 记录服务启动时刻作为 BLE warm-up 基准。
+     * Service 在 BLE 连接成功后不久启动（见 PolarBleManager.deviceConnected），
+     * 以此时刻作为 warm-up 起点，避免连接初期信号不稳时推送无效窗口。
+     */
+    private var serviceStartedAtMs: Long = 0L
 
     companion object {
         private const val CHANNEL_ID = "hr_stream"
@@ -40,22 +60,50 @@ class HrStreamService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceStartedAtMs = System.currentTimeMillis()
         createChannel()
         val notification = buildNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startStreamLoopIfNeeded()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        streamLoopJob?.cancel()
+        streamLoopJob = null
         super.onDestroy()
         val app = applicationContext as? MindBodyApplication ?: return
-        runBlocking {
+        serviceScope.launch {
             app.storage.flushAll()
+            serviceScope.cancel()
+        }
+    }
+
+    private fun startStreamLoopIfNeeded() {
+        if (streamLoopJob?.isActive == true) return
+        streamLoopJob = serviceScope.launch {
+            val app = applicationContext as? MindBodyApplication ?: return@launch
+            while (isActive) {
+                PpiStreamWorker.tryStreamOnce(
+                    app,
+                    lookbackMs = PpiStreamWorker.SERVICE_LOOKBACK_MS,
+                    bleConnectedAtMs = serviceStartedAtMs,
+                )
+                delay(PpiStreamWorker.STREAM_INTERVAL_MS)
+            }
         }
     }
 

@@ -14,11 +14,11 @@ private val MindBodyLightColors = lightColorScheme(
     onSecondary = Color.White,
     background = MindBodyColors.Background,
     onBackground = MindBodyColors.OnBackground,
-    surface = MindBodyColors.CardSurfaceSolid,
+    surface = MindBodyColors.CardWhite,
     onSurface = MindBodyColors.OnBackground,
     surfaceVariant = MindBodyColors.StatCellBg,
     onSurfaceVariant = MindBodyColors.OnBackgroundSecondary,
-    outline = MindBodyColors.CardBorder,
+    outline = MindBodyColors.AmbientShadow,
     error = Color(0xFFDC2626)
 )
 

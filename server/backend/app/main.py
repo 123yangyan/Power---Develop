@@ -3,9 +3,6 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
-
-import redis
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -16,7 +13,10 @@ from app.auth import verify_api_key
 from app.config import get_settings
 from app.database import SessionLocal, get_db, init_db
 from app.models import AudioFile
+from app.redis_client import get_redis
 from app.vitals_api import router as vitals_router
+from app.stream_routes import router as stream_router
+from app.stream_debug import router as stream_debug_router
 # oss_client 延迟导入，避免 OSS 配置错误导致 API 无法启动
 from app.schemas import (
     ApiResponse,
@@ -39,19 +39,38 @@ app = FastAPI(title="TimedRecorder API", version="1.0.0")
 
 # 身心数据 API
 app.include_router(vitals_router)
-
-
-@lru_cache
-def get_redis():
-    settings = get_settings()
-    return redis.from_url(settings.redis_url, decode_responses=True)
+# 实时生理状态推流
+app.include_router(stream_router)
+# PPI 推流观察（Phase 1 调试端点，无需鉴权）
+app.include_router(stream_debug_router)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    _init_firebase()
     _start_aggregation_scheduler()
     logger.info("API started")
+
+
+def _init_firebase() -> None:
+    """按需初始化 Firebase Admin SDK（留空路径时静默跳过）。"""
+    import os
+    cred_path = get_settings().firebase_credentials_path
+    if not cred_path:
+        logger.info("Firebase credentials path not configured — FCM push disabled")
+        return
+    if not os.path.isfile(cred_path):
+        logger.warning("Firebase credentials file not found: %s — FCM push disabled", cred_path)
+        return
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(credentials.Certificate(cred_path))
+            logger.info("Firebase Admin initialized from %s", cred_path)
+    except Exception as e:
+        logger.error("Firebase Admin initialization failed: %s", e)
 
 
 @app.get("/dashboard")
@@ -249,11 +268,12 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def _start_aggregation_scheduler() -> None:
-    """启动 APScheduler，每天凌晨 02:00 UTC 执行 A 组降采样聚合。"""
+    """启动 APScheduler：02:00 UTC 降采样聚合，03:00 UTC 基线快照。"""
     global _scheduler
     from app.agg_job import run_hourly_aggregation
+    from app.services.physio_pipeline import snapshot_all_baselines
 
-    def _job() -> None:
+    def _aggregation_job() -> None:
         db = SessionLocal()
         try:
             run_hourly_aggregation(db)
@@ -262,12 +282,26 @@ def _start_aggregation_scheduler() -> None:
         finally:
             db.close()
 
+    def _baseline_snapshot_job() -> None:
+        try:
+            snapshot_all_baselines()
+        except Exception:
+            logger.exception("Baseline snapshot job failed")
+
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(
-        _job,
+        _aggregation_job,
         trigger=CronTrigger(hour=2, minute=0),
         id="hourly_aggregation",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        _baseline_snapshot_job,
+        trigger=CronTrigger(hour=3, minute=0),
+        id="baseline_snapshot",
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("APScheduler started: hourly_aggregation at 02:00 UTC daily")
+    logger.info(
+        "APScheduler started: aggregation 02:00 UTC, baseline_snapshot 03:00 UTC"
+    )

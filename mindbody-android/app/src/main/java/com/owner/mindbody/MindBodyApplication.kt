@@ -9,9 +9,12 @@ import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.polar.PolarBleManager
 import com.owner.mindbody.util.AppLogger
+import com.owner.mindbody.notification.FcmTokenRegistrar
+import com.owner.mindbody.notification.PhysioNotificationManager
 import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.MoodReminderScheduler
 import com.owner.mindbody.worker.MoodReminderWorker
+import com.owner.mindbody.worker.PpiStreamWorker
 import com.owner.mindbody.worker.PruneDataWorker
 import com.owner.mindbody.worker.SyncWorker
 import androidx.work.ExistingWorkPolicy
@@ -49,9 +52,12 @@ class MindBodyApplication : Application() {
                 "MindBodyApp",
                 "启动 v${BuildConfig.VERSION_NAME} · Polar SDK ${PolarBleApiDefaultImpl.versionInfo()}"
             )
+            PhysioNotificationManager.ensureChannel(this)
+            FcmTokenRegistrar.scheduleStartupRegistration(this)
             MoodReminderScheduler.schedule(this)
             MoodReminderWorker.createChannel(this)
             SyncWorker.schedulePeriodic(this)
+            PpiStreamWorker.scheduleRepeating(this)
             PruneDataWorker.schedulePeriodic(this)
             BleSchedulerWorker.scheduleNext(
                 this,
