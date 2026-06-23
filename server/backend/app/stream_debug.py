@@ -15,8 +15,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.redis_client import get_redis
 from app.schemas import success
-from app.vitals_models import HrvAnalysisResult, PpiAnalysisWindow
+from app.services.baseline_manager import BaselineManager, MIN_WINDOWS
+from app.vitals_models import (
+    HrvAnalysisResult,
+    PhysioStateClassification,
+    PpiAnalysisWindow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +107,63 @@ def _safe_float(val: float | None, digits: int | None = None) -> float | None:
     return round(f, digits) if digits is not None else f
 
 
+def _get_baseline_manager() -> BaselineManager:
+    return BaselineManager(get_redis())
+
+
+def _parse_z_scores_json(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _baseline_dict_to_summary(baseline: dict | None) -> "BaselineSummary | None":
+    if baseline is None:
+        return None
+    window_count = int(baseline.get("window_count", 0) or 0)
+    return BaselineSummary(
+        window_count=window_count,
+        is_mature=window_count >= MIN_WINDOWS,
+        rmssd=_safe_float(baseline.get("rmssd"), 4),
+        rmssd_std=_safe_float(baseline.get("rmssd_std"), 4),
+        sdnn=_safe_float(baseline.get("sdnn"), 4),
+        sdnn_std=_safe_float(baseline.get("sdnn_std"), 4),
+        pnn50=_safe_float(baseline.get("pnn50"), 4),
+        pnn50_std=_safe_float(baseline.get("pnn50_std"), 4),
+        lf_hf=_safe_float(baseline.get("lf_hf"), 4),
+        lf_hf_std=_safe_float(baseline.get("lf_hf_std"), 4),
+        sd1_sd2=_safe_float(baseline.get("sd1_sd2"), 4),
+        sd1_sd2_std=_safe_float(baseline.get("sd1_sd2_std"), 4),
+        sampen=_safe_float(baseline.get("sampen"), 4),
+        sampen_std=_safe_float(baseline.get("sampen_std"), 4),
+        dfa_alpha1=_safe_float(baseline.get("dfa_alpha1"), 4),
+        dfa_alpha1_std=_safe_float(baseline.get("dfa_alpha1_std"), 4),
+        breathing_rate=_safe_float(baseline.get("breathing_rate"), 4),
+        breathing_rate_std=_safe_float(baseline.get("breathing_rate_std"), 4),
+        bpm=_safe_float(baseline.get("bpm"), 4),
+        bpm_std=_safe_float(baseline.get("bpm_std"), 4),
+        skin_temp_c=_safe_float(baseline.get("skin_temp_c"), 4),
+    )
+
+
+def _classification_to_summary(
+    row: PhysioStateClassification,
+) -> "ClassificationSummary":
+    return ClassificationSummary(
+        anxiety_score=_safe_float(row.anxiety_score, 1) or 0.0,
+        state_label=row.state_label,
+        z_scores=_parse_z_scores_json(row.z_scores_json),
+        skin_temp_delta=_safe_float(row.skin_temp_delta, 3),
+        acc_suppressed=bool(row.acc_suppressed),
+        should_notify=bool(row.should_notify),
+        cooldown_until=row.cooldown_until,
+    )
+
+
 def _hrv_result_to_summary(result: HrvAnalysisResult) -> "HrvSummary":
     return HrvSummary(
         n_clean=result.n_clean,
@@ -168,6 +231,40 @@ class HrvSummary(BaseModel):
     hr_surge_flag: bool
 
 
+class BaselineSummary(BaseModel):
+    window_count: int = 0
+    is_mature: bool = False
+    rmssd: float | None = None
+    rmssd_std: float | None = None
+    sdnn: float | None = None
+    sdnn_std: float | None = None
+    pnn50: float | None = None
+    pnn50_std: float | None = None
+    lf_hf: float | None = None
+    lf_hf_std: float | None = None
+    sd1_sd2: float | None = None
+    sd1_sd2_std: float | None = None
+    sampen: float | None = None
+    sampen_std: float | None = None
+    dfa_alpha1: float | None = None
+    dfa_alpha1_std: float | None = None
+    breathing_rate: float | None = None
+    breathing_rate_std: float | None = None
+    bpm: float | None = None
+    bpm_std: float | None = None
+    skin_temp_c: float | None = None
+
+
+class ClassificationSummary(BaseModel):
+    anxiety_score: float
+    state_label: str
+    z_scores: dict = Field(default_factory=dict)
+    skin_temp_delta: float | None = None
+    acc_suppressed: bool = False
+    should_notify: bool = False
+    cooldown_until: int | None = None
+
+
 class WindowSummary(BaseModel):
     received_at: str
     window_start: str
@@ -182,12 +279,28 @@ class WindowSummary(BaseModel):
     on_device_sdnn: float | None = None
     motion_label: str = "未知"
     hrv: HrvSummary | None = None
+    classification: ClassificationSummary | None = None
 
 
 class DeviceStreamDetailResponse(BaseModel):
     device_id: str
     total_windows: int = 0
+    gate_min_n_clean: int = GATE_MIN_N_CLEAN
+    baseline: BaselineSummary | None = None
     windows: list[WindowSummary] = Field(default_factory=list)
+
+
+class DeviceLatestState(BaseModel):
+    device_id: str
+    anxiety_score: float | None = None
+    state_label: str | None = None
+    classified_at: str | None = None
+    baseline_window_count: int = 0
+
+
+class OverviewStateResponse(BaseModel):
+    min_windows_for_mature: int = MIN_WINDOWS
+    devices: list[DeviceLatestState] = Field(default_factory=list)
 
 
 @router.get("")
@@ -288,6 +401,7 @@ def device_stream_detail(
 
     window_ids = [w.id for w in windows]
     hrv_map: dict[int, HrvAnalysisResult] = {}
+    class_map: dict[int, PhysioStateClassification] = {}
     if window_ids:
         hrv_rows = (
             db.query(HrvAnalysisResult)
@@ -295,11 +409,22 @@ def device_stream_detail(
             .all()
         )
         hrv_map = {r.window_id: r for r in hrv_rows}
+        class_rows = (
+            db.query(PhysioStateClassification)
+            .filter(PhysioStateClassification.window_id.in_(window_ids))
+            .all()
+        )
+        class_map = {r.window_id: r for r in class_rows}
+
+    baseline_summary = _baseline_dict_to_summary(
+        _get_baseline_manager().get_baseline(device_id)
+    )
 
     window_summaries: list[WindowSummary] = []
     for w in windows:
         rr_list = _parse_rr_list(w.rr_list_ms)
         hrv_row = hrv_map.get(w.id)
+        class_row = class_map.get(w.id)
         window_summaries.append(WindowSummary(
             received_at=_dt_to_iso(w.created_at) or "",
             window_start=_dt_to_iso(
@@ -318,10 +443,68 @@ def device_stream_detail(
             on_device_sdnn=_safe_float(w.on_device_sdnn, 1),
             motion_label=_motion_label(w.acc_magnitude_mean),
             hrv=_hrv_result_to_summary(hrv_row) if hrv_row else None,
+            classification=_classification_to_summary(class_row) if class_row else None,
         ))
 
     return success(DeviceStreamDetailResponse(
         device_id=device_id,
         total_windows=total_windows,
+        gate_min_n_clean=GATE_MIN_N_CLEAN,
+        baseline=baseline_summary,
         windows=window_summaries,
+    ))
+
+
+@router.get("/overview-state")
+def stream_overview_state(
+    db: Session = Depends(get_db),
+    hours: int = Query(24, ge=1, le=168),
+):
+    """每设备最新焦虑分与基线窗口数（供概览页状态列）。"""
+    cutoff_ms = int(
+        (datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp() * 1000
+    )
+    device_ids = [
+        row[0]
+        for row in db.query(PpiAnalysisWindow.device_id)
+        .filter(PpiAnalysisWindow.window_start_ts >= cutoff_ms)
+        .distinct()
+        .all()
+    ]
+
+    baseline_manager = _get_baseline_manager()
+    devices: list[DeviceLatestState] = []
+
+    for did in device_ids:
+        latest = (
+            db.query(PhysioStateClassification)
+            .filter(
+                PhysioStateClassification.device_id == did,
+                PhysioStateClassification.ts >= cutoff_ms,
+            )
+            .order_by(PhysioStateClassification.ts.desc())
+            .first()
+        )
+        baseline = baseline_manager.get_baseline(did)
+        window_count = int(baseline.get("window_count", 0) or 0) if baseline else 0
+
+        classified_at = None
+        if latest is not None:
+            classified_at = _dt_to_iso(
+                datetime.fromtimestamp(latest.ts / 1000, tz=timezone.utc)
+            )
+
+        devices.append(DeviceLatestState(
+            device_id=did,
+            anxiety_score=_safe_float(latest.anxiety_score, 1) if latest else None,
+            state_label=latest.state_label if latest else None,
+            classified_at=classified_at,
+            baseline_window_count=window_count,
+        ))
+
+    devices.sort(key=lambda d: d.classified_at or "", reverse=True)
+
+    return success(OverviewStateResponse(
+        min_windows_for_mature=MIN_WINDOWS,
+        devices=devices,
     ))
