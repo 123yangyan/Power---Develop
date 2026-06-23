@@ -3,8 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
-    // Google Services — requires google-services.json in app/ directory:
-    id("com.google.gms.google-services")
 }
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -107,4 +105,9 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+// 仅当本地存在 google-services.json 时启用（该文件含 API Key，不提交 Git）
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

@@ -1081,8 +1081,8 @@
 #### 激活 FCM 前置步骤（需用户操作）
 
 1. 在 [Firebase Console](https://console.firebase.google.com) 创建项目，添加 Android 应用（包名 `com.owner.mindbody`）。
-2. 下载 `google-services.json`，放到 `mindbody-android/app/` 目录。
-3. 打开 `app/build.gradle.kts`，取消注释 `id("com.google.gms.google-services")` 行。
+2. 下载 `google-services.json`，放到 `mindbody-android/app/` 目录（**勿提交 Git**，已加入 `.gitignore`；可参考 `google-services.json.example`）。
+3. 若 GitHub 曾扫描到泄露的 API Key，请在 Firebase / Google Cloud Console **轮换并限制**该 Key。
 4. 服务端 ECS 设置 `FIREBASE_CREDENTIALS_PATH` 环境变量（`push_service.py` 读取）。
 
 #### 关键文件

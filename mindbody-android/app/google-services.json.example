@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "1093426436824",
-    "project_id": "mindbody-ab94a",
-    "storage_bucket": "mindbody-ab94a.firebasestorage.app"
+    "project_number": "YOUR_PROJECT_NUMBER",
+    "project_id": "your-firebase-project-id",
+    "storage_bucket": "your-firebase-project-id.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1093426436824:android:9c56a298e1fda42378d5ad",
+        "mobilesdk_app_id": "1:YOUR_PROJECT_NUMBER:android:YOUR_APP_ID",
         "android_client_info": {
           "package_name": "com.owner.mindbody"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCvqRRPbGuKg3eD_D4No82oPfJ6abd01eY"
+          "current_key": "YOUR_GOOGLE_API_KEY"
         }
       ],
       "services": {
