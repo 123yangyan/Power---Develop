@@ -20,6 +20,7 @@ from app.schemas import success
 from app.services.baseline_manager import BaselineManager, MIN_WINDOWS
 from app.vitals_models import (
     HrvAnalysisResult,
+    LlmFeedbackHistory,
     PhysioStateClassification,
     PpiAnalysisWindow,
 )
@@ -187,6 +188,22 @@ def _hrv_result_to_summary(result: HrvAnalysisResult) -> "HrvSummary":
     )
 
 
+def _llm_feedback_to_summary(row: LlmFeedbackHistory) -> "LlmFeedbackSummary":
+    return LlmFeedbackSummary(
+        id=row.id,
+        device_id=row.device_id,
+        ts_iso=_dt_to_iso(datetime.fromtimestamp(row.ts / 1000, tz=timezone.utc)) or "",
+        state_label=row.state_label,
+        anxiety_score=_safe_float(row.anxiety_score, 1) or 0.0,
+        message=row.message,
+        tone=row.tone,
+        llm_used=bool(row.llm_used),
+        triggered_notification=bool(row.triggered_notification),
+        user_response=row.user_response,
+        created_at_iso=_dt_to_iso(row.created_at) or "",
+    )
+
+
 class DeviceStreamStatus(BaseModel):
     device_id: str
     health: str
@@ -265,6 +282,31 @@ class ClassificationSummary(BaseModel):
     cooldown_until: int | None = None
 
 
+class LlmFeedbackSummary(BaseModel):
+    id: int
+    device_id: str
+    ts_iso: str
+    state_label: str
+    anxiety_score: float
+    message: str
+    tone: str
+    llm_used: bool
+    triggered_notification: bool
+    user_response: str | None = None
+    created_at_iso: str
+
+
+class LlmFeedStats(BaseModel):
+    total: int = 0
+    llm_count: int = 0
+    fallback_count: int = 0
+
+
+class LlmFeedResponse(BaseModel):
+    stats: LlmFeedStats
+    items: list[LlmFeedbackSummary] = Field(default_factory=list)
+
+
 class WindowSummary(BaseModel):
     received_at: str
     window_start: str
@@ -280,6 +322,7 @@ class WindowSummary(BaseModel):
     motion_label: str = "未知"
     hrv: HrvSummary | None = None
     classification: ClassificationSummary | None = None
+    llm_feedback: LlmFeedbackSummary | None = None
 
 
 class DeviceStreamDetailResponse(BaseModel):
@@ -402,6 +445,7 @@ def device_stream_detail(
     window_ids = [w.id for w in windows]
     hrv_map: dict[int, HrvAnalysisResult] = {}
     class_map: dict[int, PhysioStateClassification] = {}
+    llm_map: dict[int, LlmFeedbackHistory] = {}
     if window_ids:
         hrv_rows = (
             db.query(HrvAnalysisResult)
@@ -415,6 +459,14 @@ def device_stream_detail(
             .all()
         )
         class_map = {r.window_id: r for r in class_rows}
+        class_ids = [r.id for r in class_rows if r.id is not None]
+        if class_ids:
+            llm_rows = (
+                db.query(LlmFeedbackHistory)
+                .filter(LlmFeedbackHistory.classification_id.in_(class_ids))
+                .all()
+            )
+            llm_map = {r.classification_id: r for r in llm_rows if r.classification_id}
 
     baseline_summary = _baseline_dict_to_summary(
         _get_baseline_manager().get_baseline(device_id)
@@ -425,6 +477,7 @@ def device_stream_detail(
         rr_list = _parse_rr_list(w.rr_list_ms)
         hrv_row = hrv_map.get(w.id)
         class_row = class_map.get(w.id)
+        llm_row = llm_map.get(class_row.id) if class_row else None
         window_summaries.append(WindowSummary(
             received_at=_dt_to_iso(w.created_at) or "",
             window_start=_dt_to_iso(
@@ -444,6 +497,7 @@ def device_stream_detail(
             motion_label=_motion_label(w.acc_magnitude_mean),
             hrv=_hrv_result_to_summary(hrv_row) if hrv_row else None,
             classification=_classification_to_summary(class_row) if class_row else None,
+            llm_feedback=_llm_feedback_to_summary(llm_row) if llm_row else None,
         ))
 
     return success(DeviceStreamDetailResponse(
@@ -507,4 +561,36 @@ def stream_overview_state(
     return success(OverviewStateResponse(
         min_windows_for_mature=MIN_WINDOWS,
         devices=devices,
+    ))
+
+
+@router.get("/llm-feed")
+def llm_feed_history(
+    db: Session = Depends(get_db),
+    device_id: str | None = Query(None),
+    limit: int = Query(30, ge=1, le=100),
+):
+    """Phase 4 LLM 反馈历史（调试观测用）。"""
+    base_query = db.query(LlmFeedbackHistory)
+    if device_id:
+        base_query = base_query.filter(LlmFeedbackHistory.device_id == device_id)
+
+    total = base_query.count()
+    llm_count = base_query.filter(LlmFeedbackHistory.llm_used.is_(True)).count()
+    fallback_count = total - llm_count
+
+    rows = (
+        base_query
+        .order_by(LlmFeedbackHistory.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return success(LlmFeedResponse(
+        stats=LlmFeedStats(
+            total=total,
+            llm_count=llm_count,
+            fallback_count=fallback_count,
+        ),
+        items=[_llm_feedback_to_summary(r) for r in rows],
     ))

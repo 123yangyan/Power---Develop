@@ -35,6 +35,12 @@ class PpiLiveBuffer(val maxSize: Int = 600) {
         val accMagnitudeMg: Int? = null
     )
 
+    /** [drainWindowAtomic] 返回的全量 + 清洗后样本。 */
+    data class DrainResult(
+        val allSamples: List<Sample>,
+        val cleanRrMs: List<Int>,
+    )
+
     // ---------------------------------------------------------------
     // 内部状态
     // ---------------------------------------------------------------
@@ -79,35 +85,37 @@ class PpiLiveBuffer(val maxSize: Int = 600) {
     // ---------------------------------------------------------------
 
     /**
+     * 原子读取 [sinceMs] 起的窗口：全量样本 + 清洗后 RR 列表，单次加锁避免并发 push 导致 coverage 偏差。
+     * 返回副本，不影响缓冲区。
+     */
+    fun drainWindowAtomic(sinceMs: Long): DrainResult {
+        lock.withLock {
+            val all = buffer
+                .filter { s -> s.timestampMs >= sinceMs }
+                .sortedBy { it.timestampMs }
+            val clean = all
+                .filter { s ->
+                    !s.blocker &&
+                        s.skinContactOk &&
+                        s.errorEstimateMs <= ERROR_ESTIMATE_MAX_MS &&
+                        s.ppiMs in RR_MIN_MS..RR_MAX_MS
+                }
+                .map { it.ppiMs }
+            return DrainResult(allSamples = all, cleanRrMs = clean)
+        }
+    }
+
+    /**
      * 取 [sinceMs] 之后的有效 PPI 样本（非 blocker、skinContactOk、errorEstimate 合格），
      * 返回副本，不影响缓冲区。
      *
      * @param sinceMs Unix 毫秒 — 只取时间戳 >= 此值的样本
      * @return 按时间排序的有效 PPI 毫秒值列表
      */
-    fun drainWindow(sinceMs: Long): List<Int> {
-        lock.withLock {
-            return buffer
-                .filter { s ->
-                    s.timestampMs >= sinceMs &&
-                        !s.blocker &&
-                        s.skinContactOk &&
-                        s.errorEstimateMs <= ERROR_ESTIMATE_MAX_MS &&
-                        s.ppiMs in RR_MIN_MS..RR_MAX_MS
-                }
-                .sortedBy { it.timestampMs }
-                .map { it.ppiMs }
-        }
-    }
+    fun drainWindow(sinceMs: Long): List<Int> = drainWindowAtomic(sinceMs).cleanRrMs
 
     /** 取指定窗口内的完整 Sample（含元数据），用于推流 payload 构建。 */
-    fun drainSamples(sinceMs: Long): List<Sample> {
-        lock.withLock {
-            return buffer
-                .filter { s -> s.timestampMs >= sinceMs }
-                .sortedBy { it.timestampMs }
-        }
-    }
+    fun drainSamples(sinceMs: Long): List<Sample> = drainWindowAtomic(sinceMs).allSamples
 
     /** 缓冲区中最新的时间戳（用于计算 next window start）。 */
     fun lastTs(): Long = lock.withLock { buffer.lastOrNull()?.timestampMs ?: 0L }

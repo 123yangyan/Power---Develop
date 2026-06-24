@@ -21,6 +21,7 @@ import com.owner.mindbody.ui.device.AutoConnectEffect
 import com.owner.mindbody.ui.components.FloatingIslandNav
 import com.owner.mindbody.ui.developer.DeveloperLogScreen
 import com.owner.mindbody.ui.developer.DeveloperStorageScreen
+import com.owner.mindbody.ui.developer.PpiUploadLogScreen
 import com.owner.mindbody.ui.device.DeviceScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
@@ -44,6 +45,7 @@ sealed class AppRoute(val route: String, val label: String) {
     data object FeedbackHistory : AppRoute("feedback_history", "反馈历史")
     data object DeveloperLog : AppRoute("developer_log", "运行日志")
     data object DeveloperStorage : AppRoute("developer_storage", "storage 看板")
+    data object PpiUploadLog : AppRoute("ppi_upload_log", "PPI 上传日志")
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
         fun create(deviceId: String) = "ftu/$deviceId"
     }
@@ -143,6 +145,9 @@ fun AppNavigation(initialRoute: String? = null) {
                     },
                     onNavigateToDeveloperStorage = {
                         navController.navigate(AppRoute.DeveloperStorage.route)
+                    },
+                    onNavigateToPpiUploadLog = {
+                        navController.navigate(AppRoute.PpiUploadLog.route)
                     }
                 )
             }
@@ -151,6 +156,9 @@ fun AppNavigation(initialRoute: String? = null) {
             }
             composable(AppRoute.DeveloperStorage.route) {
                 DeveloperStorageScreen(onBack = { navController.popBackStack() })
+            }
+            composable(AppRoute.PpiUploadLog.route) {
+                PpiUploadLogScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoute.Ftu.route) { entry ->
                 val deviceId = entry.arguments?.getString("deviceId") ?: return@composable

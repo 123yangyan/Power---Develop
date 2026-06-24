@@ -25,9 +25,9 @@ class Settings(BaseSettings):
     siliconflow_model: str = "deepseek-ai/DeepSeek-V3.1-Terminus"
     llm_feedback_timeout_seconds: float = 10.0
 
-    # Phase 5: FCM 推送 — Firebase Admin 服务账号 JSON 文件路径
-    # 留空时推送不可用，其他功能不受影响
-    firebase_credentials_path: str = ""
+    # Phase 5: ntfy 推送（留空 ntfy_topic_prefix 时推送不可用，其他功能不受影响）
+    ntfy_server: str = "https://ntfy.sh"
+    ntfy_topic_prefix: str = "mindbody"
 
     database_url: str = "postgresql://recorder:changeme@postgres:5432/recorder"
     redis_url: str = "redis://redis:6379/0"

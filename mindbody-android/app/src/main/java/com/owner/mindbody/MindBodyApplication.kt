@@ -6,10 +6,10 @@ import com.owner.mindbody.data.DevicePreferences
 import com.owner.mindbody.data.DeveloperPreferences
 import com.owner.mindbody.data.MoodPreferences
 import com.owner.mindbody.data.storage.AppStorage
+import com.owner.mindbody.data.stream.PpiUploadLogBuffer
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.polar.PolarBleManager
 import com.owner.mindbody.util.AppLogger
-import com.owner.mindbody.notification.FcmTokenRegistrar
 import com.owner.mindbody.notification.PhysioNotificationManager
 import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.MoodReminderScheduler
@@ -38,6 +38,8 @@ class MindBodyApplication : Application() {
     lateinit var polarBleManager: PolarBleManager
         private set
 
+    val ppiUploadLogBuffer: PpiUploadLogBuffer = PpiUploadLogBuffer()
+
     override fun onCreate() {
         super.onCreate()
         try {
@@ -53,7 +55,6 @@ class MindBodyApplication : Application() {
                 "启动 v${BuildConfig.VERSION_NAME} · Polar SDK ${PolarBleApiDefaultImpl.versionInfo()}"
             )
             PhysioNotificationManager.ensureChannel(this)
-            FcmTokenRegistrar.scheduleStartupRegistration(this)
             MoodReminderScheduler.schedule(this)
             MoodReminderWorker.createChannel(this)
             SyncWorker.schedulePeriodic(this)

@@ -1,20 +1,21 @@
 package com.owner.mindbody.ui.device
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.data.sync.DeviceSyncStatus
-import com.owner.mindbody.data.sync.SyncApiClient
 import com.owner.mindbody.polar.ConnectionMode
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
-import com.owner.mindbody.notification.FcmTokenRegistrar
 import com.owner.mindbody.worker.SyncWorker
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,6 +23,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         private const val UNLOCK_TAP_COUNT = 7
+        private const val NTFY_TOPIC_PREFIX = "mindbody"
     }
 
     private val app = application as MindBodyApplication
@@ -75,6 +77,10 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     val lastSyncResult: StateFlow<String> = app.storage.syncPreferences.lastSyncResult
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val ntfyTopic: StateFlow<String> = app.storage.syncPreferences.deviceId
+        .map { id -> if (id.isBlank()) "" else "$NTFY_TOPIC_PREFIX-$id" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val sdkVersion: String = polar.sdkVersion()
 
     fun scan() = polar.searchForDevices()
@@ -104,16 +110,12 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     fun setSyncBaseUrl(url: String) {
         viewModelScope.launch {
             app.storage.syncPreferences.setBaseUrl(url)
-            if (url.isNotBlank()) FcmTokenRegistrar.fetchAndRegister(app)
         }
     }
 
     fun setSyncApiKey(key: String) {
         viewModelScope.launch {
             app.storage.syncPreferences.setApiKey(key)
-            if (key.isNotBlank() && app.storage.syncPreferences.baseUrl.first().isNotBlank()) {
-                FcmTokenRegistrar.fetchAndRegister(app)
-            }
         }
     }
 
@@ -123,6 +125,14 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     fun triggerSyncNow() {
         SyncWorker.enqueueOnce(app)
+    }
+
+    fun copyNtfyTopicToClipboard(context: Context) {
+        val topic = ntfyTopic.value
+        if (topic.isBlank()) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("ntfy topic", topic))
+        Toast.makeText(context, "已复制 $topic", Toast.LENGTH_SHORT).show()
     }
 
     /** 连点版本信息区域，满 7 次切换开发者模式。 */

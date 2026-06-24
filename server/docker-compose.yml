@@ -32,8 +32,6 @@ services:
       - .env
     volumes:
       - api_data:/data
-      # Firebase 服务账号
-      - ./secrets/firebase-adminsdk.json:/data/secrets/firebase-adminsdk.json:ro
       # 热更新：宿主源码直接挂入容器，无需重建镜像
       - ./backend/app:/app/app
     depends_on:

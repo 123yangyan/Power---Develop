@@ -35,6 +35,7 @@ def init_db() -> None:
         for stmt in (
             "ALTER TABLE audio_files ADD COLUMN IF NOT EXISTS processing_at TIMESTAMPTZ",
             "ALTER TABLE hrv_analysis_results ADD COLUMN IF NOT EXISTS is_movement BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE llm_feedback_history ADD COLUMN IF NOT EXISTS llm_used BOOLEAN NOT NULL DEFAULT FALSE",
         ):
             try:
                 conn.execute(text(stmt))

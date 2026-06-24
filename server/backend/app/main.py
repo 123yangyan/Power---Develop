@@ -48,29 +48,8 @@ app.include_router(stream_debug_router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
-    _init_firebase()
     _start_aggregation_scheduler()
     logger.info("API started")
-
-
-def _init_firebase() -> None:
-    """按需初始化 Firebase Admin SDK（留空路径时静默跳过）。"""
-    import os
-    cred_path = get_settings().firebase_credentials_path
-    if not cred_path:
-        logger.info("Firebase credentials path not configured — FCM push disabled")
-        return
-    if not os.path.isfile(cred_path):
-        logger.warning("Firebase credentials file not found: %s — FCM push disabled", cred_path)
-        return
-    try:
-        import firebase_admin
-        from firebase_admin import credentials
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(credentials.Certificate(cred_path))
-            logger.info("Firebase Admin initialized from %s", cred_path)
-    except Exception as e:
-        logger.error("Firebase Admin initialization failed: %s", e)
 
 
 @app.get("/dashboard")

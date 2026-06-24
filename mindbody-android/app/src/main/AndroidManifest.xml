@@ -69,15 +69,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- Phase 5: Firebase 推送接收 -->
-        <service
-            android:name=".notification.PhysioFcmService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
         <!-- 通知按钮操作（稍后提醒 / 今天不再） -->
         <receiver
             android:name=".notification.PhysioNotificationReceiver"

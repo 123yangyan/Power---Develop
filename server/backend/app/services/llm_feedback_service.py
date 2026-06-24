@@ -188,6 +188,7 @@ class LlmFeedbackService:
                 anxiety_score=classification.anxiety_score,
                 message=message,
                 tone=tone,
+                llm_used=llm_used,
                 triggered_notification=False,
             )
             db.add(history)

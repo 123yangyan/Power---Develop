@@ -1,16 +1,18 @@
 """
-FCM 推送服务 — 将 LLM 反馈推送到 Android 设备。
+ntfy 推送服务 — 将 LLM 反馈推送到 Android 设备（经 ntfy App 订阅 topic）。
 
-Phase 5: FCM 推送 + 免打扰 + 日推上限 + 冷却管理。
+Phase 5: ntfy HTTP POST + 免打扰 + 日推上限 + 冷却管理。
 """
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 import redis
 from sqlalchemy.orm import Session
 
-from app.vitals_models import FcmToken, LlmFeedbackHistory
+from app.config import get_settings
+from app.vitals_models import LlmFeedbackHistory
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +25,10 @@ MAX_NOTIFICATIONS_PER_DAY = 3
 
 
 class PushService:
-    """FCM 推送管理器。"""
+    """ntfy 推送管理器。"""
 
     def __init__(self, redis_client: redis.Redis):
         self.redis = redis_client
-        self._firebase_app = None
 
     # -----------------------------------------------------------
     # 公共 API
@@ -43,9 +44,9 @@ class PushService:
         bypass_limits: bool = False,
     ) -> bool:
         """
-        发送 FCM 推送。返回 True 表示推送已发出。
+        发送 ntfy 推送。返回 True 表示推送已发出。
 
-        免打扰 / 日推上限 / 无 token 时静默跳过。
+        免打扰 / 日推上限 / ntfy 未配置时静默跳过。
         """
         # 1. 免打扰时段检查
         if not bypass_limits and self._is_sleep_time():
@@ -66,22 +67,17 @@ class PushService:
                 return False
             reserved_slot = True
 
-        # 3. 获取 FCM token
-        fcm_token = None
-        if db is not None:
-            token_row = db.query(FcmToken).filter_by(device_id=device_id).first()
-            if token_row:
-                fcm_token = token_row.token
-
-        if not fcm_token:
+        # 3. ntfy 配置检查
+        settings = get_settings()
+        if not settings.ntfy_topic_prefix.strip():
             if reserved_slot:
                 self.redis.decr(daily_key)
-            logger.debug("Push skipped: no FCM token for device=%s", device_id)
+            logger.debug("Push skipped: ntfy_topic_prefix not configured for device=%s", device_id)
             return False
 
         # 4. 发送
         try:
-            sent = self._send_fcm(fcm_token, message, state_label)
+            sent = await self._send_ntfy(device_id, message, state_label)
             if not sent:
                 if reserved_slot:
                     self.redis.decr(daily_key)
@@ -89,10 +85,10 @@ class PushService:
         except Exception as e:
             if reserved_slot:
                 self.redis.decr(daily_key)
-            logger.error("FCM send failed for device=%s: %s", device_id, e)
+            logger.error("ntfy send failed for device=%s: %s", device_id, e)
             return False
 
-        # 5. 更新 LLM 历史（仅在 FCM 实际发出后标记）
+        # 5. 更新 LLM 历史（仅在 ntfy 实际发出后标记）
         if db is not None and classification_id is not None:
             feedback = (
                 db.query(LlmFeedbackHistory)
@@ -104,7 +100,7 @@ class PushService:
                 feedback.triggered_notification = True
                 db.commit()
 
-        logger.info("FCM push sent: device=%s label=%s", device_id, state_label)
+        logger.info("ntfy push sent: device=%s label=%s", device_id, state_label)
         return True
 
     async def send_test(self, device_id: str, message: str, db: Optional[Session] = None) -> bool:
@@ -125,44 +121,32 @@ class PushService:
         hour = datetime.now(timezone.utc).hour
         return SLEEP_START_HOUR_UTC <= hour < SLEEP_END_HOUR_UTC
 
-    def _send_fcm(self, token: str, message: str, state_label: str) -> bool:
-        """调用 Firebase Admin SDK 发送推送。返回 True 表示已实际发出。"""
-        try:
-            import firebase_admin
-            from firebase_admin import messaging
+    async def _send_ntfy(self, device_id: str, message: str, state_label: str) -> bool:
+        """POST to ntfy topic. Returns True when server accepted the message."""
+        settings = get_settings()
+        prefix = settings.ntfy_topic_prefix.strip()
+        topic = f"{prefix}-{device_id}"
+        base = settings.ntfy_server.rstrip("/")
+        url = f"{base}/{topic}"
 
-            if not firebase_admin._apps:
-                # Firebase 尚未初始化则跳过（需在启动时配置）
-                logger.warning("Firebase not initialized, cannot send FCM")
-                return False
-
-            android_config = messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(
-                    channel_id="physio_feedback",
-                    click_action="OPEN_MOOD_LOG",
-                ),
-            )
-
-            msg = messaging.Message(
-                token=token,
-                notification=messaging.Notification(
-                    title="身心状态",
-                    body=message,
-                ),
-                data={
-                    "type": "physio_feedback",
-                    "state_label": state_label,
-                    "click_action": "OPEN_MOOD_LOG",
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                url,
+                content=message.encode("utf-8"),
+                headers={
+                    "Title": "生理状态提醒",
+                    "Priority": "high",
+                    "Tags": "heart",
+                    "Content-Type": "text/plain; charset=utf-8",
                 },
-                android=android_config,
             )
 
-            messaging.send(msg)
-            return True
-        except ImportError:
-            logger.warning("firebase-admin not installed — FCM push unavailable")
+        if response.status_code != 200:
+            logger.warning(
+                "ntfy publish failed topic=%s status=%s body=%s",
+                topic,
+                response.status_code,
+                response.text[:200],
+            )
             return False
-        except Exception as e:
-            logger.error("FCM send error: %s", e)
-            raise
+        return True

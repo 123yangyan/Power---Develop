@@ -773,6 +773,7 @@ class PolarBleManager(
         _connectedDeviceId.value = polarDeviceInfo.deviceId
         setStatus("已连接 ${polarDeviceInfo.deviceId}")
         AppLogger.i(TAG, "deviceConnected id=${polarDeviceInfo.deviceId} name=${polarDeviceInfo.name}")
+        HrStreamService.start(appContext)
         hrFeatureReady = false
         scope.launch {
             // GATT 服务刚连接时 BLE 通道尚未稳定，延迟后再查 FTU

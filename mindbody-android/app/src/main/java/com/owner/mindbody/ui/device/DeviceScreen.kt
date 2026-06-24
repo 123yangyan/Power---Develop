@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -66,8 +68,10 @@ fun DeviceScreen(
     onNavigateToFtu: (String) -> Unit,
     onNavigateToDeveloperLog: () -> Unit,
     onNavigateToDeveloperStorage: () -> Unit,
+    onNavigateToPpiUploadLog: () -> Unit,
     viewModel: DeviceViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val connectionState by viewModel.connectionState.collectAsState()
     val connectedId by viewModel.connectedDeviceId.collectAsState()
     val scanned by viewModel.scannedDevices.collectAsState()
@@ -81,6 +85,7 @@ fun DeviceScreen(
     val syncKey by viewModel.syncApiKey.collectAsState()
     val syncOn by viewModel.syncEnabled.collectAsState()
     val syncLast by viewModel.lastSyncResult.collectAsState()
+    val ntfyTopic by viewModel.ntfyTopic.collectAsState()
     val deviceSyncStatus by viewModel.deviceSyncStatus.collectAsState()
     val deviceSyncError by viewModel.deviceSyncError.collectAsState()
 
@@ -297,6 +302,16 @@ fun DeviceScreen(
                         Text("storage 看板")
                     }
                 }
+                Button(
+                    onClick = onNavigateToPpiUploadLog,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.Amber),
+                    shape = MindBodyShapes.RadioOption
+                ) {
+                    Text("PPI 上传日志")
+                }
                 // 云端同步设置
                 Text(
                     text = "云端同步",
@@ -358,6 +373,38 @@ fun DeviceScreen(
                         text = syncLast,
                         style = StatLabel,
                         modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (ntfyTopic.isNotBlank()) {
+                    Text(
+                        text = "ntfy 推送 Topic",
+                        style = CardTitle,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = ntfyTopic,
+                            style = StatLabel.copy(fontSize = 12.sp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { viewModel.copyNtfyTopicToClipboard(context) }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "复制 ntfy topic",
+                                tint = MindBodyColors.PrimaryIndigo
+                            )
+                        }
+                    }
+                    Text(
+                        text = "在 ntfy App（F-Droid 版 WebSocket 模式）中订阅此 Topic",
+                        style = StatLabel.copy(color = MindBodyColors.OnBackgroundSecondary),
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }

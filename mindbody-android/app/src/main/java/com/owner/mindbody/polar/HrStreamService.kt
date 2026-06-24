@@ -15,6 +15,7 @@ import com.owner.mindbody.MainActivity
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.R
 import com.owner.mindbody.worker.PpiStreamWorker
+import com.owner.mindbody.worker.PpiStreamWorker.Companion.StreamAttemptResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,8 +26,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * 前台服务：App 切到后台时保持 BLE 心率采集不被系统杀死；
- * 同时每 90 秒将 PPI 窗口推送到分析服务端（主推流路径）。
+ * 前台服务：BLE 连接后保持进程存活；
+ * 每 90 秒将 PPI 窗口推送到分析服务端。
  */
 class HrStreamService : Service() {
 
@@ -96,12 +97,18 @@ class HrStreamService : Service() {
         if (streamLoopJob?.isActive == true) return
         streamLoopJob = serviceScope.launch {
             val app = applicationContext as? MindBodyApplication ?: return@launch
+            // 游标从服务启动时刻起，覆盖 BLE 预热期采集的数据，避免固定 lookback 造成时间空洞
+            var lastWindowEndMs = serviceStartedAtMs
             while (isActive) {
-                PpiStreamWorker.tryStreamOnce(
+                val now = System.currentTimeMillis()
+                val result = PpiStreamWorker.tryStreamOnce(
                     app,
-                    lookbackMs = PpiStreamWorker.SERVICE_LOOKBACK_MS,
+                    sinceMs = lastWindowEndMs,
                     bleConnectedAtMs = serviceStartedAtMs,
                 )
+                if (result != StreamAttemptResult.SKIPPED_EARLY_GATE) {
+                    lastWindowEndMs = now
+                }
                 delay(PpiStreamWorker.STREAM_INTERVAL_MS)
             }
         }

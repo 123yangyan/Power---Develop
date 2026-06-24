@@ -15,8 +15,8 @@ android {
         applicationId = "com.owner.mindbody"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.4.3"
+        versionCode = 12
+        versionName = "0.4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -99,15 +99,5 @@ dependencies {
     // HTTP 客户端（云端同步）
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Firebase Cloud Messaging（Phase 5 生理状态推送）
-    // 需在 app/ 目录放置 google-services.json 并启用上方 google-services 插件后完整生效
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
-    implementation("com.google.firebase:firebase-messaging-ktx")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
-}
-
-// 仅当本地存在 google-services.json 时启用（该文件含 API Key，不提交 Git）
-if (file("google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
 }

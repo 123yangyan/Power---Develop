@@ -390,18 +390,21 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-14 |
+| 最后更新 | 2026-06-23 |
 
 #### 已实现方案
 
-- **目的**：隐藏解锁开发者模式，集中展示 App 内 BLE/同步运行日志，支持复制；并提供 Room 各表行数看板验证落库。
-- **入口**：设备页连点版本信息 7 次 → 开发者卡片 →「运行日志」/「storage 看板」
-- **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`data/StorageStatsRepository.kt`、`data/local/StorageStatsDao.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/developer/DeveloperStorageScreen.kt`、`ui/device/DeviceScreen.kt`
-- **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；storage 看板经 `app.storage.storageStats.loadStats()` 统计，刷新前先 `flushAll()`；读写仍经 `AppStorage` 门面。
-- **验收要点**：未解锁无入口；日志页可复制全部/清空；storage 看板显示 13 张表行数与最近更新时间；连接手环后刷新可见 `hr_samples` / `hr_247_samples` 等增长。
+- **目的**：隐藏解锁开发者模式，集中展示 App 内 BLE/同步运行日志，支持复制；并提供 Room 各表行数看板验证落库；**PPI 窗口上传诊断**记录每次 ~90s 推流尝试及跳过/失败原因，页面含全量统计看板（已上传/未上传/上传率）、SKIP 原因分布条形图、最近 30 条窗口时序色块图。
+- **入口**：设备页连点版本信息 7 次 → 开发者卡片 →「运行日志」/「storage 看板」/「PPI 上传日志」
+- **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`data/StorageStatsRepository.kt`、`data/local/StorageStatsDao.kt`、`data/stream/PpiWindowAttempt.kt`、`data/stream/PpiUploadLogBuffer.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/developer/DeveloperStorageScreen.kt`、`ui/developer/PpiUploadLogScreen.kt`、`ui/developer/PpiUploadLogViewModel.kt`、`worker/PpiStreamWorker.kt`、`ui/device/DeviceScreen.kt`
+- **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；storage 看板经 `app.storage.storageStats.loadStats()` 统计，刷新前先 `flushAll()`；PPI 上传日志由 `PpiStreamWorker.tryStreamOnce(sinceMs=…)` 写入 `MindBodyApplication.ppiUploadLogBuffer`（200 条环形缓冲），记录 `nRaw/nClean/覆盖率/SkipReason/服务端响应`；早期门控跳过（同步关闭/BLE/预热/URL）也会 peek buffer 写入窗口样本数；读写仍经 `AppStorage` 门面。
+- **验收要点**：未解锁无入口；日志页可复制全部/清空；storage 看板显示 13 张表行数与最近更新时间；PPI 上传日志页顶部展示 4 格统计（全部/已上传/未上传/上传率）、未上传 SKIP 原因分布（条数+占比条形图）、最近 30 条窗口时序色块（绿/黄/红）；下方保留 monospace 明细列表；未上传显示具体 SkipReason；连接手环并开启同步后每 ~90s 新增一条记录；预热期采集的数据在首次 drain 时一并纳入窗口（无时间空洞）。
 
 #### 变更记录
 
+- 2026-06-23：PPI 上传日志页重设计 — 全量统计 StatGrid、SKIP 原因分布条形图、最近 30 条时序色块图 (#ppi-upload-log-dashboard)
+- 2026-06-23：PPI 上传日志窗口游标修复 — `HrStreamService` 维护 `lastWindowEndMs`（初始=服务启动时刻），`PpiLiveBuffer.drainWindowAtomic` 原子读，消除预热期与上传耗时造成的数据空洞 (#ppi-upload-log-gap-fix)
+- 2026-06-23：PPI 上传日志诊断页（200 条环形缓冲 + SkipReason + JSON 复制）(#ppi-upload-log)
 - 2026-06-14：开发者 storage 看板（13 表 COUNT + 刷新）(#developer-storage-dashboard)
 - 2026-06-13：修复运行日志 LazyColumn 重复 key 闪退 (#phase1-android-polar)
 - 2026-06-13：开发者模式 + 运行日志页 (#phase1-android-polar)
@@ -1039,11 +1042,11 @@
 #### 已实现方案
 
 - **On-device HRV 轻量计算**：`data/HrvOnDevice.kt` — 纯 Kotlin，`rmssd()` / `sdnn()` / `pnn50()`，零三方依赖。
-- **PPI 环形缓冲区**：`data/stream/PpiLiveBuffer.kt` — `ReentrantLock` 线程安全，`drainWindow(sinceMs)` 质量过滤：`!blocker && skinContactOk && errorEstimateMs <= 30 && ppiMs in 300..2000`（与 `HrvOnDevice.RR_MIN` 对齐）；`drainSamples(sinceMs)` 返回含元数据的完整样本；容量 600，溢出时丢弃最旧 1/3。
+- **PPI 环形缓冲区**：`data/stream/PpiLiveBuffer.kt` — `ReentrantLock` 线程安全；`drainWindowAtomic(sinceMs)` 单次加锁返回全量样本 + 清洗 RR；`drainWindow` / `drainSamples` 委托原子读；质量过滤：`!blocker && skinContactOk && errorEstimateMs <= 50 && ppiMs in 300..2000`；容量 600，溢出时丢弃最旧 1/3。
 - **PolarBleManager 挂接**：`polar/PolarBleManager.kt` `processPpiData()` 额外调用 `ppiLiveBuffer.push()`（含 `errorEstimate`）；`ppiLiveBuffer` 作为公开属性暴露供 Worker 消费。
 - **推流 HTTP 客户端**：`data/sync/SyncApiClient.kt` 新增 `postPpiWindow(PpiWindowPayload): PpiWindowResult`，`POST /api/vitals/stream/ppi-window`；新增 `registerFcmToken()` 和 `reportNotificationResponse()` 方法。
-- **推流主路径（90s）**：`polar/HrStreamService.kt` — 前台服务 `onStartCommand` 启动协程循环，每 **90 秒**调用 `PpiStreamWorker.tryStreamOnce(app, lookbackMs=90_000)`；窗口回溯 90 秒；`startStreamLoopIfNeeded()` 幂等，避免重复 `onStartCommand` 叠多个循环。
-- **推流共享逻辑**：`worker/PpiStreamWorker.kt` — `companion object.tryStreamOnce()` 抽取上传核心；返回 `StreamAttemptResult`（SKIPPED / ACCEPTED / FAILED）；质量门控 `n_clean >= 25` 且 `n_clean/n_raw >= 50%`（与服务端 stream_routes / HeartPy 二次门控对齐）。
+- **推流主路径（90s）**：`polar/HrStreamService.kt` — 前台服务 `onStartCommand` 启动协程循环，每 **90 秒**调用 `PpiStreamWorker.tryStreamOnce(app, sinceMs=lastWindowEndMs)`；`lastWindowEndMs` 初始为 `serviceStartedAtMs`，仅在非 `SKIPPED_EARLY_GATE` 时推进至当前时刻，避免固定 lookback 与上传耗时造成窗口空洞；`startStreamLoopIfNeeded()` 幂等，避免重复 `onStartCommand` 叠多个循环。
+- **推流共享逻辑**：`worker/PpiStreamWorker.kt` — `companion object.tryStreamOnce(sinceMs)` 抽取上传核心；返回 `StreamAttemptResult`（`SKIPPED_EARLY_GATE` / `SKIPPED_DATA` / ACCEPTED / FAILED）；质量门控 `n_clean >= 25` 且 `n_clean/n_raw >= 45%`（与服务端 stream_routes / HeartPy 二次门控对齐）。
 - **推流兜底（15min）**：`PpiStreamWorker` 仍注册 WorkManager 15 分钟周期（Service 被杀或未启动时保底）；兜底窗口回溯 **120 秒**；`scheduleRepeating()` 在 `MindBodyApplication.onCreate()` 注册。
 - **关键文件**：
   - `data/HrvOnDevice.kt`
@@ -1055,49 +1058,55 @@
   - `MindBodyApplication.kt`（修改）
 
 #### 变更记录
+- 2026-06-23：PPI 窗口游标 + 原子 drain — `lastWindowEndMs` 覆盖预热期；`drainWindowAtomic` 消除 coverage 竞态 (#ppi-upload-log-gap-fix)
 - 2026-06-23：PPI 清洗规则优化 — errorEstimate 过滤、RR 下界 300ms、门控 n_clean≥25 + coverage≥50% (plan: PPI清洗优化)
 - 2026-06-23：推流主路径改为 HrStreamService 90s 协程循环，WorkManager 15min 兜底 (plan: PPI推流90秒循环)
 
 ---
 
-### F-P5-001 — FCM 推送通知（Android Phase 5）
+### F-P5-001 — ntfy 推送通知（Android Phase 5，原 FCM/MQTT 已替换）
 
 **Plan todo**：p5a ~ p5b
-**实现日期**：2026-06-21
+**实现日期**：2026-06-21（FCM）；2026-06-23（MQTT）；2026-06-23（ntfy 替换 MQTT）
 
 #### 已实现方案
 
-- **通知渠道 + 展示**：`notification/PhysioNotificationManager.kt` — 单例 `object`；`ensureChannel()` 幂等建渠道（`physio_feedback`，高优先级）；`show(context, notificationId, stateLabel, message)` 展示带 BigText 的状态通知，含三个操作按钮。
+- **通知渠道 + 展示**：`notification/PhysioNotificationManager.kt` — 单例 `object`；`ensureChannel()` 幂等建渠道（`physio_feedback`，高优先级）；`show(context, notificationId, stateLabel, message)` 展示带 BigText 的状态通知，含三个操作按钮（本地通知，情绪记录提醒等仍使用）。
   - 按钮 1「记录心情」→ `MainActivity`（`nav_target=mood_record`）
   - 按钮 2「稍后提醒」→ `PhysioNotificationReceiver.ACTION_SNOOZE`（BroadcastReceiver + 服务端回报）
   - 按钮 3「今天不再」→ `PhysioNotificationReceiver.ACTION_DISMISS`（BroadcastReceiver + 服务端回报）
-- **FCM Messaging Service**：`notification/PhysioFcmService.kt` — 继承 `FirebaseMessagingService`；`onNewToken()` 委托 [FcmTokenRegistrar.registerToken]；`onMessageReceived()` 解析 data payload 并调用 `PhysioNotificationManager.show()`。
-- **FCM Token 主动注册**：`notification/FcmTokenRegistrar.kt` — `MindBodyApplication.onCreate()` 调用 `scheduleStartupRegistration()` 主动 `FirebaseMessaging.getInstance().token` 并注册；保存 Server URL / API Key 时（`DeviceViewModel`）再次触发，避免仅依赖 `onNewToken` 的时序问题。
+- **ntfy 推送（服务端 → 手机）**：ECS `push_service.py` 经 `httpx` POST 到 `https://ntfy.sh/{ntfy_topic_prefix}-{device_id}`（默认 `mindbody-83f94020`）；手机安装 **ntfy F-Droid 版**，设置 → WebSocket 模式（`wss://ntfy.sh:443`，TLS 绕过运营商对明文 WS 的拦截），订阅 Device 页显示的 Topic。
+- **Device 页 Topic 展示**：`ui/device/DeviceViewModel.ntfyTopic` 从 `SyncPreferences.deviceId` 派生；`DeviceScreen` 开发者选项「云端同步」卡片末尾展示只读 Topic + 复制按钮。
+- **前台服务**：`polar/HrStreamService.kt` — 仅维持 PPI 90s 推流循环，不再维护 MQTT 长连接。
 - **操作回报 Receiver**：`notification/PhysioNotificationReceiver.kt` — 处理 SNOOZE / DISMISS 广播，IO 协程回报 `reportNotificationResponse()`。
-- **Gradle 依赖**：`app/build.gradle.kts` 添加 `firebase-bom:33.7.0` + `firebase-messaging-ktx`；`build.gradle.kts`（project）添加 `google-services` plugin（`apply false`）。
-- **Manifest 注册**：`PhysioFcmService`（intent-filter: `MESSAGING_EVENT`）+ `PhysioNotificationReceiver`（SNOOZE / DISMISS actions）。
-- **Application 初始化**：`MindBodyApplication.onCreate()` 调用 `PhysioNotificationManager.ensureChannel(this)` 与 `FcmTokenRegistrar.scheduleStartupRegistration(this)`。
+- **Manifest 注册**：`HrStreamService`（connectedDevice FGS）+ `PhysioNotificationReceiver`。
+- **Application 初始化**：`MindBodyApplication.onCreate()` 调用 `PhysioNotificationManager.ensureChannel(this)`。
 
-#### 激活 FCM 前置步骤（需用户操作）
+#### 激活 ntfy 前置步骤（需用户操作）
 
-1. 在 [Firebase Console](https://console.firebase.google.com) 创建项目，添加 Android 应用（包名 `com.owner.mindbody`）。
-2. 下载 `google-services.json`，放到 `mindbody-android/app/` 目录（**勿提交 Git**，已加入 `.gitignore`；可参考 `google-services.json.example`）。
-3. 若 GitHub 曾扫描到泄露的 API Key，请在 Firebase / Google Cloud Console **轮换并限制**该 Key。
-4. 服务端 ECS 设置 `FIREBASE_CREDENTIALS_PATH` 环境变量（`push_service.py` 读取）。
+1. 手机安装 [ntfy F-Droid 版](https://f-droid.org/packages/io.heckel.ntfy/) → 设置 → 推送服务 → **WebSocket**（不用 FCM）。
+2. 电池管理 → ntfy → **无限制**；多任务后台加锁。
+3. MindBody 设备页（开发者模式）复制 **ntfy 推送 Topic**，在 ntfy App 点 + 订阅。
+4. ECS `.env`：`NTFY_SERVER=https://ntfy.sh`、`NTFY_TOPIC_PREFIX=mindbody`；`docker compose restart api`。
+5. 测试：`curl -d "测试" -H "Title: 生理状态提醒" https://ntfy.sh/mindbody-{device_id}`
 
 #### 关键文件
 
 - `notification/PhysioNotificationManager.kt`
-- `notification/FcmTokenRegistrar.kt`
-- `notification/PhysioFcmService.kt`
 - `notification/PhysioNotificationReceiver.kt`
-- `data/sync/SyncApiClient.kt`（registerFcmToken / reportNotificationResponse）
-- `app/build.gradle.kts`（firebase-bom）
-- `build.gradle.kts`（project，google-services plugin）
-- `AndroidManifest.xml`（PhysioFcmService + PhysioNotificationReceiver）
-- `MindBodyApplication.kt`（ensureChannel + FcmTokenRegistrar）
-- `ui/device/DeviceViewModel.kt`（保存 sync URL/key 时重注册 token）
+- `polar/HrStreamService.kt`（PPI 推流）
+- `polar/PolarBleManager.kt`（BLE 连接后启动 FGS）
+- `data/sync/SyncApiClient.kt`（reportNotificationResponse）
+- `data/sync/SyncPreferences.kt`（deviceId → ntfy topic）
+- `ui/device/DeviceViewModel.kt`（ntfyTopic + 复制）
+- `ui/device/DeviceScreen.kt`（Topic 展示）
+- `AndroidManifest.xml`（HrStreamService + PhysioNotificationReceiver）
+- `MindBodyApplication.kt`（ensureChannel）
+- 服务端：`server/backend/app/services/push_service.py`、`server/backend/app/config.py`
 
 #### 变更记录
-- 2026-06-21：FCM 启动时主动拉 token 并注册（FcmTokenRegistrar）(F-P5-001)
+- 2026-06-23：MQTT 替换为 ntfy（删除 PhysioMqttSubscriber / HiveMQ；服务端 httpx POST）(F-P5-001)
+- 2026-06-23：MQTT 改 WebSocket 经 nginx `/mqtt` 反代（已废弃）(F-P5-001)
+- 2026-06-23：FCM 替换为 MQTT（已废弃）(F-P5-001)
+- 2026-06-21：FCM 启动时主动拉 token 并注册（已废弃）(F-P5-001)
 - 2026-06-21：实时生理状态检测系统 Android Phase 1 + Phase 5 落地 (plan: 实时生理状态检测系统)

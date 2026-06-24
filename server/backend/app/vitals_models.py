@@ -290,6 +290,7 @@ class LlmFeedbackHistory(Base):
     anxiety_score: Mapped[float] = mapped_column(Float, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     tone: Mapped[str] = mapped_column(String(32), nullable=False)
+    llm_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     triggered_notification: Mapped[bool] = mapped_column(Boolean, default=False)
     user_response: Mapped[str | None] = mapped_column(String(32), nullable=True)  # logged/snoozed/dismissed/none
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
