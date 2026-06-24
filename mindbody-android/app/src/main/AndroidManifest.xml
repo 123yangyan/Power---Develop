@@ -26,6 +26,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 息屏时保持 CPU 唤醒，配合前台服务抗 Doze -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 申请电池优化豁免（引导用户设为无限制） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Android 14+ 全屏意图（锁屏探查弹窗） -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 

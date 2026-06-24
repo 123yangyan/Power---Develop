@@ -87,15 +87,27 @@ class SyncManager(
             while (true) {
                 val batch = getter(BATCH_SIZE)
                 if (batch.isEmpty()) break
-                val rows = batch.map { entityToMap(it, table) }
-                val r = client.uploadBatch(deviceId, source, table, columnsFor(table), rows)
-                if (r.error != null) { fail += batch.size; AppLogger.w(TAG, "Sync $table failed: ${r.error}"); break }
-                if (r.inserted == 0) {
+                val mapped = batch.mapNotNull { entity ->
+                    try {
+                        entity to entityToMap(entity, table)
+                    } catch (e: IllegalArgumentException) {
+                        AppLogger.w(TAG, "Skip $table row: ${e.message}")
+                        null
+                    }
+                }
+                if (mapped.isEmpty()) {
                     fail += batch.size
+                    break
+                }
+                val rows = mapped.map { it.second }
+                val r = client.uploadBatch(deviceId, source, table, columnsFor(table), rows)
+                if (r.error != null) { fail += mapped.size; AppLogger.w(TAG, "Sync $table failed: ${r.error}"); break }
+                if (r.inserted == 0) {
+                    fail += mapped.size
                     AppLogger.w(TAG, "Sync $table: server inserted=0 skipped=${r.skipped}, not marking SYNCED")
                     break
                 }
-                val keys = batch.map { entityStringKey(it, table) }
+                val keys = mapped.map { entityStringKey(it.first, table) }
                 mark(keys)
                 up += r.inserted; skip += r.skipped
             }
@@ -263,7 +275,9 @@ class SyncManager(
             is ActivityMinuteSampleEntity -> entity.timestamp
             is ActivityDaySummaryEntity -> parseDateToEpochMs(entity.date)
             is NightlyRechargeEntity -> parseDateToEpochMs(entity.date)
-            is SleepSessionEntity -> entity.sleepStartTimeMs ?: 0L
+            is SleepSessionEntity -> entity.sleepStartTimeMs
+                ?: entity.sleepEndTimeMs
+                ?: throw IllegalArgumentException("SleepSession missing timestamps, skip upload")
             is TrainingSessionEntity -> entity.startTimeMs ?: 0L
             is MoodEntryEntity -> entity.occurredAt
             else -> 0L

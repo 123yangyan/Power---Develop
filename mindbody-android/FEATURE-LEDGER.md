@@ -229,17 +229,18 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-24 |
 
 #### 已实现方案
 
 - **目的**：`startHrStreaming` 持续采集并落库，后台保活。
-- **关键文件**：`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`、`ui/heartrate/HeartRateScreen.kt`
-- **调用约定**：HR 样本经 `storage.hr.saveSample` → buffer；心率页进入时启动前台服务。
-- **验收要点**：实时 BPM 显示；样本写入 Room。
+- **关键文件**：`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`、`util/PowerKeepAlive.kt`、`ui/device/DeviceScreen.kt`、`ui/heartrate/HeartRateScreen.kt`
+- **调用约定**：HR 样本经 `storage.hr.saveSample` → buffer；BLE 连接成功或心率页进入时启动前台服务；`HrStreamService` 持有 `PARTIAL_WAKE_LOCK` 抗 Doze；设备页「后台保活」卡片引导电池优化豁免与小米自启动设置。
+- **验收要点**：实时 BPM 显示；样本写入 Room；息屏后前台服务通知常驻且 90s PPI 推流循环不中断；设备页可跳转电池优化与自启动设置。
 
 #### 变更记录
 
+- 2026-06-24：息屏保活加固 — `HrStreamService` 加 partial wake lock；`PowerKeepAlive` 电池豁免+小米自启动引导；设备页后台保活卡片 (#background-keepalive)
 - 2026-06-13：HR 流 + 前台服务 (#phase1-android-polar)
 
 ---
@@ -907,16 +908,17 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | 生理数据落库与展示修复 / todo: fix-ts-zero |
-| 最后更新 | 2026-06-19 |
+| 最后更新 | 2026-06-24 |
 
 #### 已实现方案
-- **目的**：修复 `ActivityDaySummaryEntity` 和 `NightlyRechargeEntity` 上传云端时 `ts=0L` 导致所有时间窗查询为空的 bug。
-- **入口**：`data/sync/SyncManager.kt` → `entityToMap()` 的 `map["ts"]` 赋值块。
-- **关键文件**：`data/sync/SyncManager.kt`（新增 `parseDateToEpochMs(date: String): Long`）
-- **调用约定**：`parseDateToEpochMs` 将 `"yyyy-MM-dd"` 字符串解析为 UTC 00:00:00 的 epoch 毫秒；解析失败时 fallback 到 `0L`。
-- **验收要点**：云端 `activity_day_summary` / `nightly_recharge` 表的 `ts` 列值为当天 UTC 零时对应的毫秒数（如 2026-06-19 → 1750291200000）；看板「运动活动」步数柱状图有数据。
+- **目的**：修复 `ActivityDaySummaryEntity`、`NightlyRechargeEntity` 与 `SleepSessionEntity` 上传云端时 `ts=0L` 导致时间窗查询为空的 bug。
+- **入口**：`data/sync/SyncManager.kt` → `entityToMap()` 的 `map["ts"]` 赋值块；B 组 `runB()` 对缺 timestamp 的行 `mapNotNull` 跳过。
+- **关键文件**：`data/sync/SyncManager.kt`（`parseDateToEpochMs(date: String): Long`）
+- **调用约定**：`ActivityDaySummaryEntity` / `NightlyRechargeEntity` 用 `parseDateToEpochMs(entity.date)`；`SleepSessionEntity` 用 `sleepStartTimeMs ?: sleepEndTimeMs`，两者皆 null 时抛 `IllegalArgumentException` 跳过上传。
+- **验收要点**：云端 `activity_day_summary` / `nightly_recharge` 的 `ts` 为 UTC 零时 epoch；`sleep_sessions` 的 `ts` 为睡眠起始毫秒（非 0）；看板「运动活动」步数与「睡眠分析」时长趋势有数据。
 
 #### 变更记录
+- 2026-06-24：`SleepSessionEntity` 的 `ts` 改为 `sleepStartTimeMs ?: sleepEndTimeMs`，缺 timestamp 时跳过上传；配合服务端睡眠看板 `/series` 与 Polar phases 解析修复 (#sleep-dashboard-fix)
 - 2026-06-19：`ActivityDaySummaryEntity`/`NightlyRechargeEntity` 的 `ts` 从 `0L` 改为 `parseDateToEpochMs(entity.date)` (#fix-ts-zero)
 
 ---

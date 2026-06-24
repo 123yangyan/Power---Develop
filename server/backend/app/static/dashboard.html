@@ -339,6 +339,8 @@ async function loadSleep() {
   var dev = document.getElementById("deviceSelect").value;
   if (!dev) return;
   var tr = getTimeRange();
+  var minWindow = 7 * 24 * 3600 * 1000;
+  if (tr.to - tr.from < minWindow) tr = { from: tr.to - minWindow, to: tr.to };
   document.getElementById("status").textContent = "加载中...";
   try {
     var r = await api("/api/vitals/series?device=" + dev + "&from_=" + tr.from + "&to_=" + tr.to + "&tables=sleep_sessions&maxPoints=200");
@@ -397,15 +399,20 @@ function renderSleepStages(data) {
 
   // Aggregate duration by phase type (handle multiple JSON formats)
   var phaseMap = {};
-  var phaseColors = { "DEEP_SLEEP": "#4a7af0", "LIGHT_SLEEP": "#7ec8a0", "REM_SLEEP": "#e85d75", "WAKE": "#f0a060", "DEEP": "#4a7af0", "LIGHT": "#7ec8a0", "REM": "#e85d75" };
-  var phaseLabels = { "DEEP_SLEEP": "深睡", "LIGHT_SLEEP": "浅睡", "REM_SLEEP": "REM", "WAKE": "清醒", "DEEP": "深睡", "LIGHT": "浅睡", "REM": "REM" };
+  var phaseColors = { "DEEP_SLEEP": "#4a7af0", "LIGHT_SLEEP": "#7ec8a0", "REM_SLEEP": "#e85d75", "WAKE": "#f0a060", "DEEP": "#4a7af0", "LIGHT": "#7ec8a0", "REM": "#e85d75", "NONREM3": "#4a7af0", "NONREM12": "#7ec8a0" };
+  var phaseLabels = { "DEEP_SLEEP": "深睡", "LIGHT_SLEEP": "浅睡", "REM_SLEEP": "REM", "WAKE": "清醒", "DEEP": "深睡", "LIGHT": "浅睡", "REM": "REM", "NONREM3": "深睡", "NONREM12": "浅睡" };
 
-  phases.forEach(function(p) {
-    var type = p.type || p.phase || p.stage || "未知";
+  phases.forEach(function(p, i) {
+    var type = p.type || p.phase || p.stage || p.state || "未知";
     // Duration: try various field names, convert ms→minutes if needed
     var dur = p.durationSeconds || p.duration_seconds || p.duration || 0;
-    if (p.endSeconds && p.startSeconds !== undefined) dur = (p.endSeconds - p.startSeconds);
-    if (p.end && p.start) dur = (p.end - p.start);
+    if (p.endSeconds !== undefined && p.startSeconds !== undefined) dur = (p.endSeconds - p.startSeconds);
+    if (p.end !== undefined && p.start !== undefined) dur = (p.end - p.start);
+    // Polar cumulative offset format: { state, secondsFromSleepStart }
+    if (dur <= 0 && p.secondsFromSleepStart !== undefined) {
+      var next = phases[i + 1];
+      dur = next ? (next.secondsFromSleepStart - p.secondsFromSleepStart) : 0;
+    }
     // If value looks like milliseconds (>10000), convert to minutes
     if (dur > 10000) dur = Math.round(dur / 60000);
     else if (dur > 500) dur = Math.round(dur / 60); // seconds → minutes

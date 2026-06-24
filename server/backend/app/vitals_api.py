@@ -187,11 +187,14 @@ def query_series(
                 series_list.append(SeriesData(table=table + "_coord_x", points=pts))
                 continue
 
-            # 数值表：取第一个数值列
+            # 数值表：取第一个数值列（sleep_sessions 用持续时长而非起始时间戳）
             cols = TABLE_COLUMNS.get(table, [])
             if not cols:
                 continue
-            val_col = cols[0]
+            if table == "sleep_sessions":
+                val_col = "(sleep_end_time_ms - sleep_start_time_ms)"
+            else:
+                val_col = cols[0]
 
             sql = f"""
                 SELECT (ts / :bucket) * :bucket AS bucket_ts, AVG({val_col}) AS avg_val

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.owner.mindbody.MainActivity
 import com.owner.mindbody.MindBodyApplication
@@ -33,6 +34,7 @@ class HrStreamService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var streamLoopJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     /**
      * 记录服务启动时刻作为 BLE warm-up 基准。
@@ -44,6 +46,7 @@ class HrStreamService : Service() {
     companion object {
         private const val CHANNEL_ID = "hr_stream"
         private const val NOTIFICATION_ID = 1001
+        private const val WAKE_LOCK_TAG = "MindBody:HrStream"
 
         fun start(context: Context) {
             val intent = Intent(context, HrStreamService::class.java)
@@ -73,6 +76,7 @@ class HrStreamService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        acquireWakeLock()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -85,6 +89,7 @@ class HrStreamService : Service() {
     override fun onDestroy() {
         streamLoopJob?.cancel()
         streamLoopJob = null
+        releaseWakeLock()
         super.onDestroy()
         val app = applicationContext as? MindBodyApplication ?: return
         serviceScope.launch {
@@ -112,6 +117,24 @@ class HrStreamService : Service() {
                 delay(PpiStreamWorker.STREAM_INTERVAL_MS)
             }
         }
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { lock ->
+            if (lock.isHeld) {
+                lock.release()
+            }
+        }
+        wakeLock = null
     }
 
     private fun createChannel() {

@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.data.sync.DeviceSyncStatus
 import com.owner.mindbody.worker.MoodReminderDeliver
@@ -62,6 +66,7 @@ import com.owner.mindbody.ui.theme.MindBodyColors
 import com.owner.mindbody.ui.theme.MindBodyShapes
 import com.owner.mindbody.ui.theme.StatLabel
 import com.owner.mindbody.ui.theme.StatValue
+import com.owner.mindbody.util.PowerKeepAlive
 
 @Composable
 fun DeviceScreen(
@@ -261,6 +266,8 @@ fun DeviceScreen(
                 }
             }
         }
+
+        BackgroundKeepAliveCard()
 
         PairingTipsCard()
 
@@ -559,6 +566,79 @@ private fun DeviceItem(device: ScannedDevice, onConnect: () -> Unit) {
                 Text(device.deviceId, style = StatLabel, modifier = Modifier.padding(top = 2.dp))
             }
             Text("RSSI ${device.rssi}", style = StatLabel.copy(color = MindBodyColors.PrimaryIndigo))
+        }
+    }
+}
+
+@Composable
+private fun BackgroundKeepAliveCard() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var batteryExempt by remember { mutableStateOf(PowerKeepAlive.isIgnoringBatteryOptimizations(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                batteryExempt = PowerKeepAlive.isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    PremiumCard(contentPadding = 16.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "后台保活", style = CardTitle)
+            StatusBadge(
+                text = if (batteryExempt) "已豁免" else "未豁免",
+                active = batteryExempt
+            )
+        }
+        Text(
+            text = "息屏后需保持 BLE 连接与 PPI 推流。小米 HyperOS 请完成以下设置：",
+            style = StatLabel,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Column(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            listOf(
+                "开启本应用「自启动」",
+                "省电策略设为「无限制」",
+                "多任务界面锁定本应用卡片",
+                "开启「锁屏显示」与「后台弹出界面」权限"
+            ).forEach { tip ->
+                Text("• $tip", style = StatLabel)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!batteryExempt) {
+                Button(
+                    onClick = { PowerKeepAlive.requestIgnoreBatteryOptimizations(context) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MindBodyColors.PrimaryIndigo),
+                    shape = MindBodyShapes.RadioOption
+                ) {
+                    Text("设为无限制")
+                }
+            }
+            OutlinedButton(
+                onClick = { PowerKeepAlive.openAutoStartSettings(context) },
+                modifier = Modifier.weight(1f),
+                shape = MindBodyShapes.RadioOption
+            ) {
+                Text("打开自启动")
+            }
         }
     }
 }
