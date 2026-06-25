@@ -80,7 +80,9 @@ class PhysioStateViewModel(application: Application) : AndroidViewModel(applicat
                     if (!response.isSuccessful) return@withContext
                     val body = response.body?.string() ?: return@withContext
                     val summary = parsePhysioStateSummary(body)
-                    storage.updatePhysioState(summary)
+                    if (summary != null) {
+                        storage.updatePhysioState(summary)
+                    }
 
                     val feedback = parseFeedbackHistory(body)
                     if (feedback.isNotEmpty()) {
