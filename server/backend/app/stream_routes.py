@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,8 +15,15 @@ from sqlalchemy.orm import Session
 from app.auth import verify_api_key
 from app.database import get_db
 from app.redis_client import get_redis
+from app.services.baseline_manager import BaselineManager
 from app.services.physio_pipeline import get_services, run_physio_pipeline
-from app.vitals_models import FcmToken, PpiAnalysisWindow
+from app.vitals_models import (
+    FcmToken,
+    HrvAnalysisResult,
+    LlmFeedbackHistory,
+    PhysioStateClassification,
+    PpiAnalysisWindow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,3 +200,121 @@ def report_notification_response(payload: NotificationResponseRequest):
         payload.response,
     )
     return {"ok": True}
+
+
+def _baseline_window_count(device_id: str) -> int:
+    baseline = BaselineManager(get_redis()).get_baseline(device_id)
+    if baseline is None:
+        return 0
+    return int(baseline.get("window_count", 0))
+
+
+def _hrv_to_dict(hrv: HrvAnalysisResult | None) -> dict | None:
+    if hrv is None:
+        return None
+    return {
+        "rmssd": hrv.rmssd,
+        "sdnn": hrv.sdnn,
+        "lf_hf": hrv.lf_hf,
+        "breathing_rate": hrv.breathing_rate,
+        "sampen": hrv.sampen,
+        "dfa_alpha1": hrv.dfa_alpha1,
+        "hr_surge_flag": bool(hrv.hr_surge_flag),
+    }
+
+
+def _classification_to_dict(
+    classification: PhysioStateClassification | None,
+    *,
+    default_ts_ms: int = 0,
+) -> dict:
+    if classification is None:
+        return {
+            "state_label": "baseline_building",
+            "anxiety_score": 0.0,
+            "window_id": 0,
+            "created_at_ms": default_ts_ms,
+        }
+    return {
+        "state_label": classification.state_label,
+        "anxiety_score": classification.anxiety_score,
+        "window_id": classification.window_id,
+        "created_at_ms": classification.ts,
+    }
+
+
+def _feedback_to_dict(feedback: LlmFeedbackHistory | None) -> dict | None:
+    if feedback is None:
+        return None
+    return {"message": feedback.message}
+
+
+def _feedback_history_item(feedback: LlmFeedbackHistory) -> dict:
+    return {
+        "id": feedback.id,
+        "created_at_ms": feedback.ts,
+        "state_label": feedback.state_label,
+        "anxiety_score": feedback.anxiety_score,
+        "message": feedback.message,
+        "tone": feedback.tone,
+        "user_response": feedback.user_response,
+    }
+
+
+@router.get("/status")
+def get_device_status(
+    device_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    """Android 状态 Tab 轮询 — 返回 flat JSON（无 ApiResponse 包装）。"""
+    window_count = _baseline_window_count(device_id)
+
+    latest_window = (
+        db.query(PpiAnalysisWindow)
+        .filter(PpiAnalysisWindow.device_id == device_id)
+        .order_by(PpiAnalysisWindow.window_end_ts.desc())
+        .first()
+    )
+    last_stream_ts = latest_window.window_end_ts if latest_window else 0
+
+    classification = (
+        db.query(PhysioStateClassification)
+        .filter(PhysioStateClassification.device_id == device_id)
+        .order_by(PhysioStateClassification.id.desc())
+        .first()
+    )
+
+    hrv = (
+        db.query(HrvAnalysisResult)
+        .filter(HrvAnalysisResult.device_id == device_id)
+        .order_by(HrvAnalysisResult.id.desc())
+        .first()
+    )
+
+    latest_feedback = (
+        db.query(LlmFeedbackHistory)
+        .filter(LlmFeedbackHistory.device_id == device_id)
+        .order_by(LlmFeedbackHistory.id.desc())
+        .first()
+    )
+
+    feedback_history = (
+        db.query(LlmFeedbackHistory)
+        .filter(LlmFeedbackHistory.device_id == device_id)
+        .order_by(LlmFeedbackHistory.id.desc())
+        .limit(10)
+        .all()
+    )
+
+    default_ts_ms = last_stream_ts or 0
+    return {
+        "window_count": window_count,
+        "last_stream_ts": last_stream_ts,
+        "latest_classification": _classification_to_dict(
+            classification,
+            default_ts_ms=default_ts_ms,
+        ),
+        "latest_hrv": _hrv_to_dict(hrv),
+        "latest_feedback": _feedback_to_dict(latest_feedback),
+        "feedback_history": [_feedback_history_item(item) for item in feedback_history],
+    }

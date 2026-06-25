@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.data.LlmFeedbackEntry
 import com.owner.mindbody.data.PhysioStateSummary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -63,25 +65,27 @@ class PhysioStateViewModel(application: Application) : AndroidViewModel(applicat
 
     private suspend fun fetchPhysioState() {
         try {
-            val baseUrl = storage.syncPreferences.baseUrl.first()
-            val apiKey = storage.syncPreferences.apiKey.first()
-            val deviceId = storage.syncPreferences.deviceId.first()
-            if (baseUrl.isBlank() || apiKey.isBlank() || deviceId.isBlank()) return
+            withContext(Dispatchers.IO) {
+                val baseUrl = storage.syncPreferences.baseUrl.first()
+                val apiKey = storage.syncPreferences.apiKey.first()
+                val deviceId = storage.syncPreferences.deviceId.first()
+                if (baseUrl.isBlank() || apiKey.isBlank() || deviceId.isBlank()) return@withContext
 
-            val request = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/vitals/stream/status?device_id=$deviceId")
-                .addHeader("X-API-Key", apiKey)
-                .build()
+                val request = Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/vitals/stream/status?device_id=$deviceId")
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return
-                val body = response.body?.string() ?: return
-                val summary = parsePhysioStateSummary(body)
-                storage.updatePhysioState(summary)
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext
+                    val body = response.body?.string() ?: return@withContext
+                    val summary = parsePhysioStateSummary(body)
+                    storage.updatePhysioState(summary)
 
-                val feedback = parseFeedbackHistory(body)
-                if (feedback.isNotEmpty()) {
-                    storage.updateFeedbackHistory(feedback)
+                    val feedback = parseFeedbackHistory(body)
+                    if (feedback.isNotEmpty()) {
+                        storage.updateFeedbackHistory(feedback)
+                    }
                 }
             }
         } catch (_: Exception) {
