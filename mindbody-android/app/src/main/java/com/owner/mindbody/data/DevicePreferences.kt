@@ -19,11 +19,18 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  */
 class DevicePreferences(private val context: Context) {
 
+    companion object {
+        const val DEFAULT_BEDTIME_HOUR = 23
+        const val DEFAULT_WAKE_HOUR = 7
+    }
+
     private val deviceIdKey = stringPreferencesKey("polar_device_id")
     private val ftuDoneKey = booleanPreferencesKey("ftu_done")
     private val connectionModeKey = stringPreferencesKey("connection_mode")
     private val batteryInputMinKey = intPreferencesKey("battery_input_min")
     private val batteryInputMaxKey = intPreferencesKey("battery_input_max")
+    private val bedtimeHourKey = intPreferencesKey("ble_bedtime_hour")
+    private val wakeHourKey = intPreferencesKey("ble_wake_hour")
 
     val savedDeviceId: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[deviceIdKey]
@@ -64,6 +71,14 @@ class DevicePreferences(private val context: Context) {
         prefs[batteryInputMaxKey] ?: 100
     }
 
+    val bedtimeHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[bedtimeHourKey] ?: DEFAULT_BEDTIME_HOUR
+    }
+
+    val wakeHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[wakeHourKey] ?: DEFAULT_WAKE_HOUR
+    }
+
     suspend fun setBatteryInputMin(min: Int) {
         context.dataStore.edit { prefs ->
             prefs[batteryInputMinKey] = min
@@ -73,6 +88,18 @@ class DevicePreferences(private val context: Context) {
     suspend fun setBatteryInputMax(max: Int) {
         context.dataStore.edit { prefs ->
             prefs[batteryInputMaxKey] = max
+        }
+    }
+
+    suspend fun setBedtimeHour(hour: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[bedtimeHourKey] = hour.coerceIn(0, 23)
+        }
+    }
+
+    suspend fun setWakeHour(hour: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[wakeHourKey] = hour.coerceIn(0, 23)
         }
     }
 

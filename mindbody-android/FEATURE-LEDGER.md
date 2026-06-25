@@ -6,11 +6,11 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品说明：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-23
+**最后更新**：2026-06-25
 
 ---
 
-## 索引（已实现 38 条 + 稳定性修复 9 条）
+## 索引（已实现 38 条 + 稳定性修复 11 条）
 
 | ID | 名称 | Plan todo |
 |----|------|-----------|
@@ -49,6 +49,7 @@
 | F-P2-013 | 情绪角色化 UI v4（探查抽屉 + 沉浸记录） | emotion-ui-v4 |
 | F-P3-001 | SyncManager ts 修复（ActivityDay/NightlyRecharge） | fix-ts-zero |
 | F-P3-002 | DeviceScreen 设备离线同步状态 UI | add-devicesync-ui |
+| F-P3-003 | 睡眠数据拉取与云端上传修复 | sleep-upload-fix |
 
 路径均相对于 `app/src/main/java/com/owner/mindbody/`。
 
@@ -330,16 +331,18 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-13 |
+| 最后更新 | 2026-06-25 |
 
 #### 已实现方案
 
-- **目的**：已配对设备 ID、FTU 状态、BLE 模式等非 Room 偏好。
+- **目的**：已配对设备 ID、FTU 状态、BLE 模式、夜间断联/晨间重连时间等非 Room 偏好。
 - **关键文件**：`data/DevicePreferences.kt`
-- **调用约定**：不经 AppStorage；由 `MindBodyApplication` 直接暴露。
+- **调用约定**：不经 AppStorage；由 `MindBodyApplication` 直接暴露。`ble_bedtime_hour` / `ble_wake_hour` 默认 23 / 7，供 `BleSchedulerWorker` 与设备设置页读写。
+- **验收要点**：修改断联/重连时间后 DataStore 持久化；Worker 下次调度读取最新小时。
 
 #### 变更记录
 
+- 2026-06-25：新增 `ble_bedtime_hour` / `ble_wake_hour`（默认 23:00 / 07:00）(#ble-nightly-scheduler)
 - 2026-06-13：扩展多 Repository + deviceSync (#stream-appstorage)
 
 ---
@@ -391,7 +394,7 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | loop心情ai产品规划 / todo: phase1-android-polar |
-| 最后更新 | 2026-06-23 |
+| 最后更新 | 2026-06-25 |
 
 #### 已实现方案
 
@@ -399,10 +402,11 @@
 - **入口**：设备页连点版本信息 7 次 → 开发者卡片 →「运行日志」/「storage 看板」/「PPI 上传日志」
 - **关键文件**：`util/AppLogger.kt`、`util/AppLogBuffer.kt`、`data/DeveloperPreferences.kt`、`data/StorageStatsRepository.kt`、`data/local/StorageStatsDao.kt`、`data/stream/PpiWindowAttempt.kt`、`data/stream/PpiUploadLogBuffer.kt`、`ui/developer/DeveloperLogScreen.kt`、`ui/developer/DeveloperStorageScreen.kt`、`ui/developer/PpiUploadLogScreen.kt`、`ui/developer/PpiUploadLogViewModel.kt`、`worker/PpiStreamWorker.kt`、`ui/device/DeviceScreen.kt`
 - **调用约定**：`AppLogger` 同时写 Logcat 与环形缓冲（800 条）；storage 看板经 `app.storage.storageStats.loadStats()` 统计，刷新前先 `flushAll()`；PPI 上传日志由 `PpiStreamWorker.tryStreamOnce(sinceMs=…)` 写入 `MindBodyApplication.ppiUploadLogBuffer`（200 条环形缓冲），记录 `nRaw/nClean/覆盖率/SkipReason/服务端响应`；早期门控跳过（同步关闭/BLE/预热/URL）也会 peek buffer 写入窗口样本数；读写仍经 `AppStorage` 门面。
-- **验收要点**：未解锁无入口；日志页可复制全部/清空；storage 看板显示 13 张表行数与最近更新时间；PPI 上传日志页顶部展示 4 格统计（全部/已上传/未上传/上传率）、未上传 SKIP 原因分布（条数+占比条形图）、最近 30 条窗口时序色块（绿/黄/红）；下方保留 monospace 明细列表；未上传显示具体 SkipReason；连接手环并开启同步后每 ~90s 新增一条记录；预热期采集的数据在首次 drain 时一并纳入窗口（无时间空洞）。
+- **验收要点**：未解锁无入口；日志页可复制全部/清空；运行日志页支持 DEBUG/INFO/WARN/ERROR 四档级别筛选（Toggle Chip 多选，至少保留 1 档；「复制全部」仅复制当前可见条目；条数显示「显示 N / 共 M 条」）；storage 看板显示 13 张表行数与最近更新时间；PPI 上传日志页顶部展示 4 格统计（全部/已上传/未上传/上传率）、未上传 SKIP 原因分布（条数+占比条形图）、最近 30 条窗口时序色块（绿/黄/红）；下方保留 monospace 明细列表；未上传显示具体 SkipReason；连接手环并开启同步后每 ~90s 新增一条记录；预热期采集的数据在首次 drain 时一并纳入窗口（无时间空洞）。
 
 #### 变更记录
 
+- 2026-06-25：运行日志页增加 DEBUG/INFO/WARN/ERROR 级别筛选 Toggle Chip；复制全部同步当前筛选结果 (#developer-log-level-filter)
 - 2026-06-23：PPI 上传日志页重设计 — 全量统计 StatGrid、SKIP 原因分布条形图、最近 30 条时序色块图 (#ppi-upload-log-dashboard)
 - 2026-06-23：PPI 上传日志窗口游标修复 — `HrStreamService` 维护 `lastWindowEndMs`（初始=服务启动时刻），`PpiLiveBuffer.drainWindowAtomic` 原子读，消除预热期与上传耗时造成的数据空洞 (#ppi-upload-log-gap-fix)
 - 2026-06-23：PPI 上传日志诊断页（200 条环形缓冲 + SkipReason + JSON 复制）(#ppi-upload-log)
@@ -876,6 +880,27 @@
 
 ---
 
+### F-BUG-010 状态页主线程网络 + 切 Tab 误停前台服务
+
+| 字段 | 值 |
+|------|-----|
+| 来源 | 用户反馈 / HyperOS 回桌面闪退、冷启动约 1s 闪退 |
+| 最后更新 | 2026-06-25 |
+
+#### 已修复内容
+
+- **问题 1**：`PhysioStateViewModel` 在 `viewModelScope`（Main）内同步 `OkHttp.execute()`，进入「状态」Tab 约 30s 内触发 `NetworkOnMainThreadException` 闪退。
+- **问题 2**：离开心率 Tab 时 `HeartRateViewModel.stopBackgroundStream()` 无条件 `HrStreamService.stop()`，BLE 仍连接时前台服务被撤掉，HyperOS 回桌面易杀进程（logcat 可见 `DeadObjectException` / `frozen apps`）。
+- **问题 3（回归）**：`deviceDisconnected` 无条件 `HrStreamService.stop()`，冷启动 GATT 清理（`userInitiatedDisconnect=true`，约 1s 后重连）也会停前台服务 → HyperOS 杀进程，表现为「点开 1 秒闪退」。
+- **修复**：
+  - 状态轮询包在 `withContext(Dispatchers.IO)` 内执行。
+  - 切 Tab 时仅当 `connectionState != CONNECTED` 才 stop 前台服务。
+  - `deviceDisconnected` 仅在 `!userInitiatedDisconnect` 时 stop FGS；用户主动 `disconnect()` 在调用 SDK 断连前显式 stop。
+  - `HrStreamService.acquireWakeLock()` 加 try/catch，避免 OEM 异常导致 onCreate 崩溃。
+- **关键文件**：`ui/physio/PhysioStateViewModel.kt`、`ui/heartrate/HeartRateViewModel.kt`、`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`
+
+---
+
 ## 新增条目模板（功能完成后追加）
 
 ```markdown
@@ -944,6 +969,33 @@
 
 ---
 
+### F-P3-003 睡眠数据拉取与云端上传修复
+
+| 字段 | 值 |
+|------|-----|
+| Plan | 睡眠数据未上传修复 / todo: sleep-upload-fix |
+| 最后更新 | 2026-06-25 |
+
+#### 已实现方案
+
+- **目的**：修复夜间睡眠无法上云：本地占位行缺 timestamp、设备同步游标过早推进、REPLACE 覆盖已有时间、无效行反复 WARN。
+- **入口**：`DeviceSyncManager.syncSleepData()` → `PolarDeviceDataMappers.mapSleep()` → `SleepRepository.upsertAllMerge()` → `SyncManager.runB("sleep_sessions")`。
+- **关键文件**：
+  - `data/sync/PolarDeviceDataMappers.kt`：`originalSleepRange` fallback；空记录 `return null`；诊断日志
+  - `data/sync/DeviceSyncManager.kt`：最近 3 天滚动重拉；无有效 timestamp 不推进 `lastSyncedDate`
+  - `data/SleepRepository.kt` + `data/local/SleepSessionDao.kt`：合并 upsert（COALESCE timestamp）；`deleteByDates`
+  - `data/sync/SyncManager.kt`：缺 timestamp 的 sleep 行删除并计 `skipped`，不阻塞有效行
+  - `data/sync/SyncPreferences.kt`：`normalizeBaseUrl` 自动补 `http://`、去 `:443`
+  - `ui/device/DeviceScreen.kt`：Server URL placeholder `http://120.26.204.190`
+- **调用约定**：Server URL 须带协议（推荐 `http://120.26.204.190`）；晨间 BLE 重连后 `DeviceSyncManager` 自动重拉最近 3 天睡眠；云端同步删除仍缺 timestamp 的遗留占位行。
+- **验收要点**：storage 看板 `sleep_sessions` 最近日期有 `sleepStartTimeMs`/`sleepEndTimeMs`；手动同步日志 `Upload sleep_sessions: inserted>0`；看板睡眠分析有时长；无重复 `Skip sleep_sessions row` WARN。
+
+#### 变更记录
+
+- 2026-06-25：睡眠 3 天滚动重拉 + mapSleep fallback + 合并 upsert + 无效行清理 + URL 规范化 (#sleep-upload-fix)
+
+---
+
 ### F-P1-014 ACC 10 秒桶聚合（acc_minute_summary）
 
 | 字段 | 值 |
@@ -971,19 +1023,23 @@
 | 字段 | 值 |
 |------|-----|
 | Plan | P1 BLE 管理扩展 / todo: ble-nightly-scheduler |
-| 最后更新 | 2026-06-20 |
+| 最后更新 | 2026-06-25 |
 
 #### 已实现方案
-- **目的**：每晚 22:00 自动断开 BLE，让 Polar Loop 进入离线夜间记录；次日 08:00 自动重连并触发 `DeviceSyncManager` 拉取 Sleep / Nightly Recharge 等离线数据。
-- **入口**：`MindBodyApplication.onCreate()` → `BleSchedulerWorker.scheduleNext(ACTION_DISCONNECT, KEEP)` 启动链式调度。
+- **目的**：每晚自动断开 BLE，让 Polar Loop 进入离线夜间记录；次日自动重连并触发 `DeviceSyncManager` 拉取 Sleep / Nightly Recharge 等离线数据。
+- **入口**：`MindBodyApplication.onCreate()` → `BleSchedulerWorker.scheduleNext(ACTION_DISCONNECT, KEEP)` 启动链式调度；**设备设置页**「夜间自动断联」卡片可编辑断联/重连整点时间。
 - **关键文件**：
-  - `worker/BleSchedulerWorker.kt`：`ACTION_DISCONNECT` / `ACTION_RECONNECT`；`delayUntilNextHour()` 计算本地时区整点延迟；Worker 执行后 `scheduleNext()` 自我链接下一任务。
+  - `worker/BleSchedulerWorker.kt`：`ACTION_DISCONNECT` / `ACTION_RECONNECT`；`delayUntilNextHour()` 计算本地时区整点延迟；Worker 执行后从 `DevicePreferences` 读取用户配置小时并 `scheduleNext()` 自我链接下一任务。
+  - `data/DevicePreferences.kt`：`ble_bedtime_hour` / `ble_wake_hour`（默认 23 / 7）。
+  - `ui/device/DeviceScreen.kt`：`BleScheduleCard` + `TimePickerDialog` 编辑时间。
+  - `ui/device/DeviceViewModel.kt`：`setBedtimeHour()` 保存并 `REPLACE` 重排下一次 DISCONNECT；`setWakeHour()` 保存偏好。
   - `MindBodyApplication.kt`：应用启动时用 `ExistingWorkPolicy.KEEP` 注册首次断开任务，避免覆盖已排队 work。
   - `polar/PolarBleManager.kt`：断开复用 `disconnect()`；重连复用 `tryAutoConnectSavedDevice(force=true)`。
-- **调用约定**：默认就寝 22:00、起床 08:00（常量 `DEFAULT_BEDTIME_HOUR` / `DEFAULT_WAKE_HOUR`）；`BleSchedulerWorker.cancel(context)` 可取消整条链。
-- **验收要点**：22:00 前后若 BLE 已连接则自动断开；08:00 前后自动扫描并重连已保存设备；重连后设备页可见离线同步状态变化；应用重启不重复排队（KEEP）。
+- **调用约定**：默认就寝 **23:00**、起床 **07:00**；修改断联时间立即重排 WorkManager；`BleSchedulerWorker.cancel(context)` 可取消整条链。
+- **验收要点**：用户设定整点前后若 BLE 已连接则自动断开；重连整点前后自动扫描并重连已保存设备；设备页时间 chip 可改且重启后仍生效；应用重启不重复排队（KEEP）。
 
 #### 变更记录
+- 2026-06-25：断联/重连时间可配置（默认 23:00 / 07:00）；设备设置页 `BleScheduleCard` (#ble-nightly-scheduler)
 - 2026-06-20：新增 BleSchedulerWorker 链式 OneTimeWork 调度 (#ble-nightly-scheduler)
 
 ---

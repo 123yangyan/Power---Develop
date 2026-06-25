@@ -1,7 +1,10 @@
 package com.owner.mindbody.ui.developer
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +33,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -48,7 +53,9 @@ fun DeveloperLogScreen(
     viewModel: DeveloperLogViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val entries by viewModel.entries.collectAsState()
+    val totalEntries by viewModel.totalEntries.collectAsState()
+    val filteredEntries by viewModel.filteredEntries.collectAsState()
+    val selectedLevels by viewModel.selectedLevels.collectAsState()
     val autoScroll by viewModel.autoScrollToBottom.collectAsState()
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -61,9 +68,9 @@ fun DeveloperLogScreen(
         }
     }
 
-    LaunchedEffect(entries.size, autoScroll) {
-        if (autoScroll && entries.isNotEmpty()) {
-            listState.animateScrollToItem(entries.lastIndex)
+    LaunchedEffect(filteredEntries.size, autoScroll) {
+        if (autoScroll && filteredEntries.isNotEmpty()) {
+            listState.animateScrollToItem(filteredEntries.lastIndex)
         }
     }
 
@@ -130,8 +137,22 @@ fun DeveloperLogScreen(
                 )
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LogLevel.entries.forEach { level ->
+                    LogLevelChip(
+                        level = level,
+                        selected = level in selectedLevels,
+                        onClick = { viewModel.toggleLevel(level) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
             Text(
-                text = "共 ${entries.size} 条 · 长按可选中复制片段",
+                text = "显示 ${filteredEntries.size} / 共 ${totalEntries.size} 条 · 长按可选中复制片段",
                 style = StatLabel
             )
 
@@ -143,16 +164,20 @@ fun DeveloperLogScreen(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                if (entries.isEmpty()) {
+                if (filteredEntries.isEmpty()) {
                     item {
                         Text(
-                            text = "暂无日志。启动 App 或连接手环后此处会显示运行记录。",
+                            text = if (totalEntries.isEmpty()) {
+                                "暂无日志。启动 App 或连接手环后此处会显示运行记录。"
+                            } else {
+                                "当前筛选条件下无日志。请调整上方级别筛选。"
+                            },
                             style = StatLabel,
                             modifier = Modifier.padding(8.dp)
                         )
                     }
                 } else {
-                    items(entries, key = { it.id }) { entry ->
+                    items(filteredEntries, key = { it.id }) { entry ->
                         SelectionContainer {
                             Text(
                                 text = entry.formatLine(),
@@ -172,7 +197,46 @@ fun DeveloperLogScreen(
 }
 
 @Composable
-private fun levelColor(level: LogLevel): androidx.compose.ui.graphics.Color {
+private fun LogLevelChip(
+    level: LogLevel,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = levelColor(level)
+    Box(
+        modifier = modifier
+            .clip(MindBodyShapes.RadioOption)
+            .background(
+                if (selected) accent else MindBodyColors.StatCellBg
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) accent else MindBodyColors.OnBackgroundSecondary.copy(alpha = 0.2f),
+                shape = MindBodyShapes.RadioOption
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = level.shortLabel(),
+            style = CardTitle.copy(
+                color = if (selected) Color.White else MindBodyColors.OnBackgroundSecondary
+            )
+        )
+    }
+}
+
+private fun LogLevel.shortLabel(): String = when (this) {
+    LogLevel.DEBUG -> "D"
+    LogLevel.INFO -> "I"
+    LogLevel.WARN -> "W"
+    LogLevel.ERROR -> "E"
+}
+
+@Composable
+private fun levelColor(level: LogLevel): Color {
     return when (level) {
         LogLevel.DEBUG -> MindBodyColors.OnBackgroundSecondary
         LogLevel.INFO -> MindBodyColors.OnBackground

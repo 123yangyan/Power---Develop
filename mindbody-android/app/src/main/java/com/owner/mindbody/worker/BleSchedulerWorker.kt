@@ -8,15 +8,17 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.owner.mindbody.MindBodyApplication
+import com.owner.mindbody.data.DevicePreferences
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.util.AppLogger
+import kotlinx.coroutines.flow.first
 import java.time.Duration
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 /**
  * 夜间自动断开 BLE、晨间自动重连。
- * 链式 OneTimeWork 调度：22:00 断开 → 08:00 重连 → 循环。
+ * 链式 OneTimeWork 调度：默认 23:00 断开 → 07:00 重连 → 循环（可在设备设置页修改）。
  */
 class BleSchedulerWorker(
     context: Context,
@@ -28,8 +30,10 @@ class BleSchedulerWorker(
         val action = inputData.getString(KEY_ACTION) ?: return Result.failure()
 
         return try {
+            val prefs = app.devicePreferences
             when (action) {
                 ACTION_DISCONNECT -> {
+                    val wakeHour = prefs.wakeHour.first()
                     val state = app.polarBleManager.connectionState.value
                     if (state == ConnectionState.CONNECTED) {
                         AppLogger.i(TAG, "Scheduled disconnect at bedtime")
@@ -40,17 +44,18 @@ class BleSchedulerWorker(
                     scheduleNext(
                         applicationContext,
                         ACTION_RECONNECT,
-                        DEFAULT_WAKE_HOUR,
+                        wakeHour,
                         ExistingWorkPolicy.REPLACE
                     )
                 }
                 ACTION_RECONNECT -> {
+                    val bedtimeHour = prefs.bedtimeHour.first()
                     AppLogger.i(TAG, "Scheduled reconnect at wake time")
                     app.polarBleManager.tryAutoConnectSavedDevice(force = true)
                     scheduleNext(
                         applicationContext,
                         ACTION_DISCONNECT,
-                        DEFAULT_BEDTIME_HOUR,
+                        bedtimeHour,
                         ExistingWorkPolicy.REPLACE
                     )
                 }
@@ -73,8 +78,8 @@ class BleSchedulerWorker(
         const val ACTION_DISCONNECT = "disconnect"
         const val ACTION_RECONNECT = "reconnect"
 
-        const val DEFAULT_BEDTIME_HOUR = 22
-        const val DEFAULT_WAKE_HOUR = 8
+        const val DEFAULT_BEDTIME_HOUR = DevicePreferences.DEFAULT_BEDTIME_HOUR
+        const val DEFAULT_WAKE_HOUR = DevicePreferences.DEFAULT_WAKE_HOUR
 
         private const val KEY_ACTION = "action"
 

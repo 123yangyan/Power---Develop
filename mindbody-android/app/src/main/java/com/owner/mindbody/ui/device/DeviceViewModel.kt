@@ -8,11 +8,14 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
+import com.owner.mindbody.data.DevicePreferences
 import com.owner.mindbody.data.sync.DeviceSyncStatus
 import com.owner.mindbody.polar.ConnectionMode
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
+import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.SyncWorker
+import androidx.work.ExistingWorkPolicy
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -54,6 +57,12 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     val connectionMode: StateFlow<ConnectionMode> = polar.connectionMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionMode.PERSISTENT)
+
+    val bedtimeHour: StateFlow<Int> = app.devicePreferences.bedtimeHour
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DevicePreferences.DEFAULT_BEDTIME_HOUR)
+
+    val wakeHour: StateFlow<Int> = app.devicePreferences.wakeHour
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DevicePreferences.DEFAULT_WAKE_HOUR)
 
     val developerModeEnabled: StateFlow<Boolean> = app.developerPreferences.developerModeEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -106,6 +115,24 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setConnectionMode(mode: ConnectionMode) = polar.setConnectionMode(mode)
+
+    fun setBedtimeHour(hour: Int) {
+        viewModelScope.launch {
+            app.devicePreferences.setBedtimeHour(hour)
+            BleSchedulerWorker.scheduleNext(
+                app,
+                BleSchedulerWorker.ACTION_DISCONNECT,
+                hour,
+                ExistingWorkPolicy.REPLACE
+            )
+        }
+    }
+
+    fun setWakeHour(hour: Int) {
+        viewModelScope.launch {
+            app.devicePreferences.setWakeHour(hour)
+        }
+    }
 
     fun setSyncBaseUrl(url: String) {
         viewModelScope.launch {

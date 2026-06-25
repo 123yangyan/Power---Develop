@@ -367,6 +367,7 @@ class PolarBleManager(
         stopSkinTempStreaming()
         stopAccStreaming()
         stopPpiStreaming()
+        HrStreamService.stop(appContext)
         api.disconnectFromDevice(id)
     }
 
@@ -812,6 +813,10 @@ class PolarBleManager(
         stopSkinTempStreaming()
         stopAccStreaming()
         stopPpiStreaming()
+        // 仅在真实断连时停服务；GATT 清理临时断（userInitiatedDisconnect=true）不停
+        if (!userInitiatedDisconnect) {
+            HrStreamService.stop(appContext)
+        }
         setStatus("已断开 ${polarDeviceInfo.deviceId}")
         AppLogger.i(
             TAG,

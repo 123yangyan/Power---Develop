@@ -8,6 +8,7 @@ import com.owner.mindbody.data.local.Ppi247SampleEntity
 import com.owner.mindbody.data.local.SleepSessionEntity
 import com.owner.mindbody.data.local.SkinTemp247SampleEntity
 import com.owner.mindbody.data.local.TrainingSessionEntity
+import com.owner.mindbody.util.AppLogger
 import com.polar.sdk.api.model.activity.AutomaticSampleTriggerType
 import com.polar.sdk.api.model.activity.Polar247HrSamples
 import com.polar.sdk.api.model.activity.Polar247HrSamplesData
@@ -34,6 +35,7 @@ import java.time.ZonedDateTime
 
 internal object PolarDeviceDataMappers {
 
+    private const val TAG = "PolarDeviceDataMappers"
     private val zoneId: ZoneId = ZoneId.systemDefault()
 
     fun mergeActivityDaySummary(
@@ -124,18 +126,42 @@ internal object PolarDeviceDataMappers {
 
     fun mapSleep(data: PolarSleepData): SleepSessionEntity? {
         val date = data.date?.toString() ?: data.result?.sleepResultDate?.toString() ?: return null
-        val result = data.result ?: return SleepSessionEntity(date = date)
+        val result = data.result
+        if (result == null) {
+            AppLogger.d(TAG, "mapSleep date=$date: no result, skip")
+            return null
+        }
+
+        val startMs = result.sleepStartTime?.toEpochMs()
+            ?: result.originalSleepRange?.startTime?.let { localDateTimeToEpochMs(it) }
+        val endMs = result.sleepEndTime?.toEpochMs()
+            ?: result.originalSleepRange?.endTime?.let { localDateTimeToEpochMs(it) }
+        val phasesJson = phasesToJson(result.sleepWakePhases)
+        val cyclesJson = cyclesToJson(result.sleepCycles)
+
+        if (startMs == null && endMs == null && phasesJson == null && cyclesJson == null) {
+            AppLogger.d(TAG, "mapSleep date=$date: empty sleep data, skip")
+            return null
+        }
+
+        val startSource = when {
+            result.sleepStartTime != null -> "sleepStartTime"
+            result.originalSleepRange != null -> "originalSleepRange"
+            else -> "none"
+        }
+        AppLogger.d(TAG, "mapSleep date=$date startMs=$startMs endMs=$endMs source=$startSource")
+
         return SleepSessionEntity(
             date = date,
-            sleepStartTimeMs = result.sleepStartTime?.toEpochMs(),
-            sleepEndTimeMs = result.sleepEndTime?.toEpochMs(),
+            sleepStartTimeMs = startMs,
+            sleepEndTimeMs = endMs,
             sleepGoalMinutes = result.sleepGoalMinutes,
             userSleepRating = result.userSleepRating?.value,
             batteryRanOut = result.batteryRanOut ?: false,
             sleepSkinTempCelsius = result.sleepSkinTemperatureResult?.sleepSkinTemperatureCelsius,
             sleepSkinTempDeviation = result.sleepSkinTemperatureResult?.deviationFromBaseLine,
-            sleepWakePhasesJson = phasesToJson(result.sleepWakePhases),
-            sleepCyclesJson = cyclesToJson(result.sleepCycles)
+            sleepWakePhasesJson = phasesJson,
+            sleepCyclesJson = cyclesJson
         )
     }
 
@@ -234,6 +260,9 @@ internal object PolarDeviceDataMappers {
     }
 
     private fun ZonedDateTime.toEpochMs(): Long = toInstant().toEpochMilli()
+
+    private fun localDateTimeToEpochMs(dt: LocalDateTime): Long =
+        dt.atZone(zoneId).toInstant().toEpochMilli()
 
     private fun phasesToJson(phases: List<SleepWakePhase>?): String? {
         if (phases.isNullOrEmpty()) return null

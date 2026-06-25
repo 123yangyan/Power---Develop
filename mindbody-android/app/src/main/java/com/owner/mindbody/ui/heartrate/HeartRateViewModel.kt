@@ -160,7 +160,10 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun stopBackgroundStream() {
-        HrStreamService.stop(getApplication())
+        // BLE 仍连接时前台服务由 PolarBleManager 持有，切 Tab 不得 stop，否则 HyperOS 易杀进程
+        if (connectionState.value != ConnectionState.CONNECTED) {
+            HrStreamService.stop(getApplication())
+        }
     }
 
     fun setChartPreset(preset: ChartWindowPreset) {

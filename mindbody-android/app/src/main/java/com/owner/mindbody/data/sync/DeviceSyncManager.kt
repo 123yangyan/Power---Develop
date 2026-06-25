@@ -38,6 +38,8 @@ class DeviceSyncManager(
     companion object {
         private const val TAG = "DeviceSyncManager"
         private const val DEFAULT_LOOKBACK_DAYS = 7L
+        /** 睡眠数据滚动重拉窗口（含 today 共 3 天）。 */
+        private const val SLEEP_ROLLING_DAYS = 2L
     }
 
     private val _syncStatus = MutableStateFlow(DeviceSyncStatus.IDLE)
@@ -211,10 +213,23 @@ class DeviceSyncManager(
 
     private suspend fun syncSleepData(api: PolarBleApi, deviceId: String) {
         val (from, to) = resolveDateRange(SyncDataType.SLEEP)
-        if (from.isAfter(to)) return
-        val sessions = api.getSleep(deviceId, from, to).mapNotNull { PolarDeviceDataMappers.mapSleep(it) }
-        storage.sleep.upsertAll(sessions)
-        syncPreferences.setLastSyncedDate(SyncDataType.SLEEP, to)
+        val rollingFrom = to.minusDays(SLEEP_ROLLING_DAYS)
+        val effectiveFrom = if (from.isAfter(rollingFrom)) rollingFrom else from
+        if (effectiveFrom.isAfter(to)) return
+
+        AppLogger.d(TAG, "Sleep sync range: $effectiveFrom .. $to (cursor from=$from)")
+        val sessions = api.getSleep(deviceId, effectiveFrom, to).mapNotNull { PolarDeviceDataMappers.mapSleep(it) }
+        storage.sleep.upsertAllMerge(sessions)
+
+        val hasValidTimestamps = sessions.any {
+            it.sleepStartTimeMs != null || it.sleepEndTimeMs != null
+        }
+        if (hasValidTimestamps) {
+            syncPreferences.setLastSyncedDate(SyncDataType.SLEEP, to)
+            AppLogger.d(TAG, "Sleep sync: ${sessions.size} sessions, cursor advanced to $to")
+        } else {
+            AppLogger.d(TAG, "Sleep sync: no valid timestamps, keeping cursor")
+        }
     }
 
     private suspend fun syncTrainingData(api: PolarBleApi, deviceId: String) {

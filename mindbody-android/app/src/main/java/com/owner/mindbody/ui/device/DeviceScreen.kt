@@ -1,5 +1,6 @@
 package com.owner.mindbody.ui.device
 
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,6 +86,8 @@ fun DeviceScreen(
     val status by viewModel.statusMessage.collectAsState()
     val savedId by viewModel.savedDeviceId.collectAsState()
     val mode by viewModel.connectionMode.collectAsState()
+    val bedtimeHour by viewModel.bedtimeHour.collectAsState()
+    val wakeHour by viewModel.wakeHour.collectAsState()
     val developerMode by viewModel.developerModeEnabled.collectAsState()
     val syncUrl by viewModel.syncBaseUrl.collectAsState()
     val syncKey by viewModel.syncApiKey.collectAsState()
@@ -194,6 +197,13 @@ fun DeviceScreen(
                 modifier = Modifier.padding(top = 14.dp)
             )
         }
+
+        BleScheduleCard(
+            bedtimeHour = bedtimeHour,
+            wakeHour = wakeHour,
+            onBedtimeHourChange = viewModel::setBedtimeHour,
+            onWakeHourChange = viewModel::setWakeHour,
+        )
 
         PremiumCard {
             Row(
@@ -329,6 +339,7 @@ fun DeviceScreen(
                     value = syncUrl,
                     onValueChange = { viewModel.setSyncBaseUrl(it) },
                     label = { Text("Server URL", fontSize = 11.sp) },
+                    placeholder = { Text("http://120.26.204.190", fontSize = 11.sp) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -501,6 +512,94 @@ private fun FtuProfileGrid(ftuDone: Boolean) {
         }
     }
 }
+
+@Composable
+private fun BleScheduleCard(
+    bedtimeHour: Int,
+    wakeHour: Int,
+    onBedtimeHourChange: (Int) -> Unit,
+    onWakeHourChange: (Int) -> Unit,
+) {
+    val context = LocalContext.current
+
+    PremiumCard {
+        Text(text = "夜间自动断联", style = CardTitle)
+        Column(
+            modifier = Modifier.padding(top = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BleScheduleTimeRow(
+                label = "断联时间",
+                hour = bedtimeHour,
+                onClick = {
+                    TimePickerDialog(
+                        context,
+                        { _, hourOfDay, _ -> onBedtimeHourChange(hourOfDay) },
+                        bedtimeHour,
+                        0,
+                        true
+                    ).show()
+                }
+            )
+            BleScheduleTimeRow(
+                label = "重连时间",
+                hour = wakeHour,
+                onClick = {
+                    TimePickerDialog(
+                        context,
+                        { _, hourOfDay, _ -> onWakeHourChange(hourOfDay) },
+                        wakeHour,
+                        0,
+                        true
+                    ).show()
+                }
+            )
+        }
+        Text(
+            text = "每日自动断联并在晨间重连",
+            style = StatLabel,
+            modifier = Modifier.padding(top = 10.dp)
+        )
+    }
+}
+
+@Composable
+private fun BleScheduleTimeRow(
+    label: String,
+    hour: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, style = StatLabel)
+        Box(
+            modifier = Modifier
+                .clip(MindBodyShapes.RadioOption)
+                .background(MindBodyColors.StatCellBg)
+                .border(
+                    1.dp,
+                    MindBodyColors.PrimaryIndigo.copy(alpha = 0.12f),
+                    MindBodyShapes.RadioOption
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = formatScheduleHour(hour),
+                style = StatValue.copy(
+                    fontSize = CardTitle.fontSize,
+                    color = MindBodyColors.PrimaryIndigo
+                )
+            )
+        }
+    }
+}
+
+private fun formatScheduleHour(hour: Int): String =
+    "%02d:00".format(hour.coerceIn(0, 23))
 
 @Composable
 private fun RowScope.FtuCell(

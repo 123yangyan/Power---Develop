@@ -17,6 +17,7 @@ import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.R
 import com.owner.mindbody.worker.PpiStreamWorker
 import com.owner.mindbody.worker.PpiStreamWorker.Companion.StreamAttemptResult
+import com.owner.mindbody.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -121,10 +122,14 @@ class HrStreamService : Service() {
 
     private fun acquireWakeLock() {
         if (wakeLock?.isHeld == true) return
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
-            setReferenceCounted(false)
-            acquire()
+        try {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            AppLogger.w("HrStreamService", "acquireWakeLock failed: ${e.message}")
         }
     }
 

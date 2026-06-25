@@ -87,15 +87,26 @@ class SyncManager(
             while (true) {
                 val batch = getter(BATCH_SIZE)
                 if (batch.isEmpty()) break
-                val mapped = batch.mapNotNull { entity ->
+                val mapped = mutableListOf<Pair<Any, Map<String, Any?>>>()
+                val invalidSleepDates = mutableListOf<String>()
+                for (entity in batch) {
                     try {
-                        entity to entityToMap(entity, table)
+                        mapped.add(entity to entityToMap(entity, table))
                     } catch (e: IllegalArgumentException) {
-                        AppLogger.w(TAG, "Skip $table row: ${e.message}")
-                        null
+                        if (table == "sleep_sessions" && entity is SleepSessionEntity) {
+                            invalidSleepDates.add(entity.date)
+                        } else {
+                            AppLogger.w(TAG, "Skip $table row: ${e.message}")
+                        }
                     }
                 }
+                if (table == "sleep_sessions" && invalidSleepDates.isNotEmpty()) {
+                    storage.sleep.deleteByDates(invalidSleepDates)
+                    skip += invalidSleepDates.size
+                    AppLogger.d(TAG, "Removed ${invalidSleepDates.size} sleep_sessions without timestamps")
+                }
                 if (mapped.isEmpty()) {
+                    if (invalidSleepDates.isNotEmpty()) continue
                     fail += batch.size
                     break
                 }
