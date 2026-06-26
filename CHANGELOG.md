@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.5.0 (2026-06-26)
+
+Phase 3 生理闭环与设置导航收官
+
+## 亮点
+- F-P3-004：实时 PPI 推流 + HeartPy HRV 生理状态检测管线（v0.4.2）
+- F-P2-UI-001：5 Tab 导航重构 — 状态页指标拆分、传感器合并、日记本 Hero/Narrative 风格
+- F-P2-014：日时间轴「时间」Tab — 训练/心情/焦虑反馈纵向轴
+- F-P1-007：设备页重构为「设置」— Section 分组 + 采集策略/心情提醒/后台保活 3 个次级页
+- F-P1-016：CDM 伴随设备保活 — 关联前断开 BLE、关联状态读 getAssociations、修复无限扫描与未关联显示
+- F-P1-003/F-P1-015：KeepAliveCoordinator 统一 FGS 启停 + BLE 夜间断联可配置
+- F-P5-001：ntfy WebSocket 本地应激通知（v0.4.4）
+- F-P3-003：睡眠 3 天滚动重拉 + SleepSession ts 上传修复
+
+## 变更范围
+- mindbody-android：PhysioStateScreen/ViewModel、TimelineScreen、DeviceScreen 设置重构、CompanionDeviceHelper、KeepAliveCoordinator、PpiStreamWorker、ntfy 推送、SyncWorker、功能清单分片（FEATURE-LEDGER + docs/feature-ledger/）
+- server：stream status endpoint、Vitals API 看板、ECS 部署辅助
+
+## 验收
+- 底部 5 Tab：心率 / 状态 / 记录 / 时间 / 设置 可切换且状态保持
+- 设置 → 后台保活 → 关联伴随设备：弹窗可列出 Polar 设备，完成后显示「已关联」
+- 状态页可见 HRV 五档动态色 + 本地应激通知；时间轴可见当日事件
+- PPI 推流 ~90s 周期写入；开发者 PPI 上传日志页有新增记录
+
+## 已知限制
+- Phase 3 云端 HR+情绪融合 Pipeline 与每日调度待下一里程碑
+- Phase 4 仪表页、7 日历史指导展示尚未开发
+
 ## v0.4.0 (2026-06-20)
 
 Phase 2 收官 + Phase 3 初始集成
