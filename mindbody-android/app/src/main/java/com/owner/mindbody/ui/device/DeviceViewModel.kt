@@ -21,9 +21,11 @@ import com.owner.mindbody.util.CompanionDeviceHelper
 import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.SyncWorker
 import androidx.work.ExistingWorkPolicy
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -109,6 +111,10 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     val sdkVersion: String = polar.sdkVersion()
 
     private var companionPromptDeviceId: String? = null
+    private var reconnectDeviceAfterCdm: String? = null
+
+    private val _associatingInProgress = MutableStateFlow(false)
+    val associatingInProgress: StateFlow<Boolean> = _associatingInProgress.asStateFlow()
 
     val companionAssociated: StateFlow<Boolean> = app.devicePreferences.companionAssociationId
         .map { id -> id != 0 }
@@ -152,12 +158,27 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             Toast.makeText(app, "当前系统版本不支持伴随设备关联", Toast.LENGTH_SHORT).show()
             return
         }
+        if (_associatingInProgress.value) return
+        _associatingInProgress.value = true
+        // 已 GATT 连接时设备通常不再广播，CDM 扫描找不到目标且会与 Polar 连接竞争；先断开再关联。
+        if (polar.connectionState.value == ConnectionState.CONNECTED) {
+            reconnectDeviceAfterCdm = polar.connectedDeviceId.value
+                ?: savedDeviceId.value
+                ?: deviceId
+            polar.disconnect()
+        }
         val mac = CompanionDeviceHelper.normalizeMacAddress(deviceId)
         CompanionDeviceHelper.associate(
             activity = activity,
             deviceMac = mac,
             onDeviceFound = onDeviceFound,
             onFailure = { error ->
+                _associatingInProgress.value = false
+                val reconnectId = reconnectDeviceAfterCdm
+                reconnectDeviceAfterCdm = null
+                if (!reconnectId.isNullOrBlank()) {
+                    polar.connectSavedDevice(reconnectId)
+                }
                 Toast.makeText(
                     app,
                     error ?: "伴随设备关联失败，可稍后在后台保活卡片重试",
@@ -169,26 +190,32 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onCompanionAssociationComplete(deviceId: String, success: Boolean) {
+        _associatingInProgress.value = false
         clearCompanionPrompt()
-        if (!success) return
+        val reconnectId = reconnectDeviceAfterCdm
+        reconnectDeviceAfterCdm = null
         viewModelScope.launch {
-            val association = CompanionDeviceHelper.findAssociation(app, deviceId)
-            val mac = CompanionDeviceHelper.normalizeMacAddress(deviceId)
-            if (association != null) {
-                app.devicePreferences.setCompanionAssociation(
-                    associationId = association.id.coerceAtLeast(-1),
-                    deviceMac = mac,
-                )
-                Toast.makeText(app, "已关联伴随设备，后台优先级已提升", Toast.LENGTH_SHORT).show()
-            } else {
-                // 用户可能选了设备但列表尚未刷新，仍记录 MAC
-                if (mac != null) {
+            if (success) {
+                // Polar deviceId 不是 BLE MAC，不能用 findAssociation；CDM 刚完成关联，直接读本 App 关联列表。
+                val associations = CompanionDeviceHelper.getAssociations(app)
+                val association = associations.firstOrNull()
+                if (association != null) {
+                    app.devicePreferences.setCompanionAssociation(
+                        associationId = association.id.coerceAtLeast(-1),
+                        deviceMac = association.macAddress.takeIf { it.isNotBlank() },
+                    )
+                    Toast.makeText(app, "已关联伴随设备，后台优先级已提升", Toast.LENGTH_SHORT).show()
+                } else {
+                    // CDM 返回 OK 但列表尚未刷新，先写入占位符让 UI 显示已关联
                     app.devicePreferences.setCompanionAssociation(
                         associationId = -1,
-                        deviceMac = mac,
+                        deviceMac = null,
                     )
+                    Toast.makeText(app, "伴随设备关联完成", Toast.LENGTH_SHORT).show()
                 }
-                Toast.makeText(app, "伴随设备关联完成", Toast.LENGTH_SHORT).show()
+            }
+            if (!reconnectId.isNullOrBlank()) {
+                polar.connectSavedDevice(reconnectId)
             }
             refreshKeepAlive()
         }
@@ -196,15 +223,19 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refreshCompanionAssociationStatus() {
         viewModelScope.launch {
-            val deviceId = savedDeviceId.value ?: connectedDeviceId.value ?: return@launch
-            val association = CompanionDeviceHelper.findAssociation(app, deviceId)
-            if (association != null) {
+            val associations = CompanionDeviceHelper.getAssociations(app)
+            if (associations.isNotEmpty()) {
+                val association = associations.first()
                 app.devicePreferences.setCompanionAssociation(
                     associationId = association.id.coerceAtLeast(-1),
-                    deviceMac = association.macAddress,
+                    deviceMac = association.macAddress.takeIf { it.isNotBlank() },
                 )
             } else {
-                app.devicePreferences.clearCompanionAssociation()
+                // 列表为空时仅清除「从未关联」状态；保留 -1 占位符直至 CDM 列表刷新
+                val currentId = app.devicePreferences.companionAssociationId.first()
+                if (currentId == 0) {
+                    app.devicePreferences.clearCompanionAssociation()
+                }
             }
         }
     }
@@ -312,5 +343,11 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             val message = if (enable) "开发者模式已开启" else "开发者模式已关闭"
             Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        _associatingInProgress.value = false
+        reconnectDeviceAfterCdm = null
     }
 }

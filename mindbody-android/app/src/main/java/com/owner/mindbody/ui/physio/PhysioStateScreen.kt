@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.data.LlmFeedbackEntry
 import com.owner.mindbody.data.PhysioStateSummary
+import com.owner.mindbody.polar.AccSample
+import com.polar.sdk.api.model.PolarPpiData
+import kotlin.math.sqrt
 import com.owner.mindbody.ui.components.HeroIndicator
 import com.owner.mindbody.ui.components.MicroGrid
 import com.owner.mindbody.ui.components.MicroGridItem
@@ -62,6 +65,9 @@ fun PhysioStateScreen(
 ) {
     val physioState by viewModel.latestPhysioState.collectAsState()
     val feedbackList by viewModel.feedbackHistory.collectAsState()
+    val currentAcc by viewModel.currentAcc.collectAsState()
+    val latestPpi by viewModel.latestPpi.collectAsState()
+    val currentSkinTemp by viewModel.currentSkinTemp.collectAsState()
 
     DisposableEffect(Unit) {
         viewModel.startPolling()
@@ -91,10 +97,15 @@ fun PhysioStateScreen(
             LlmNarrativeCard(physioState = physioState!!)
         }
 
-        // ── BOTTOM (30%): HRV 数据网格 ────────────────────────────────────
+        // ── BOTTOM: 身心分析指标（基线完成后）+ 实时传感器 ───────────────
         if (physioState != null && physioState!!.stateLabel != "baseline_building") {
-            HrvMicroGridCard(physioState = physioState!!)
+            HrvAnalysisCard(physioState = physioState!!)
         }
+        SensorReadingsCard(
+            currentAcc = currentAcc,
+            latestPpi = latestPpi,
+            currentSkinTemp = currentSkinTemp
+        )
 
         // ── 历史状态条形卡（下滑可见）────────────────────────────────────
         if (feedbackList.isNotEmpty()) {
@@ -382,57 +393,167 @@ private fun HistoryStripCard(entry: LlmFeedbackEntry) {
     }
 }
 
-// ── HRV 数据网格 ──────────────────────────────────────────────────────────────
+// ── 身心分析指标（HRV 六格，动态五档颜色）────────────────────────────────────
 
 @Composable
-private fun HrvMicroGridCard(physioState: PhysioStateSummary) {
+private fun HrvAnalysisCard(physioState: PhysioStateSummary) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "生理指标详情",
+            text = "身心分析指标",
             style = CardTitle.copy(color = MindBodyColors.OnBackgroundSecondary)
         )
         MicroGrid(
             items = listOf(
-                MicroGridItem(
-                    label = "RMSSD",
+                hrvGridItem(
+                    label = "副交感调节",
                     value = physioState.rmssd?.let { "%.1f".format(it) } ?: "--",
-                    unit = "ms",
-                    valueColor = MindBodyColors.CalmTeal,
-                    sparklineColor = MindBodyColors.CalmTeal
+                    unit = "毫秒",
+                    rawValue = physioState.rmssd,
+                    veryLow = 15f, low = 30f, high = 80f, veryHigh = 120f
                 ),
-                MicroGridItem(
-                    label = "SDNN",
+                hrvGridItem(
+                    label = "整体心率变异",
                     value = physioState.sdnn?.let { "%.1f".format(it) } ?: "--",
-                    unit = "ms",
-                    valueColor = MindBodyColors.OceanBlue,
-                    sparklineColor = MindBodyColors.OceanBlue
+                    unit = "毫秒",
+                    rawValue = physioState.sdnn,
+                    veryLow = 20f, low = 40f, high = 100f, veryHigh = 150f
                 ),
-                MicroGridItem(
-                    label = "LF/HF",
+                hrvGridItem(
+                    label = "神经平衡比",
                     value = physioState.lfHf?.let { "%.2f".format(it) } ?: "--",
-                    valueColor = MindBodyColors.StressAmber,
-                    sparklineColor = MindBodyColors.StressAmber
+                    rawValue = physioState.lfHf,
+                    veryLow = 0.3f, low = 0.5f, high = 2.0f, veryHigh = 4.0f
                 ),
-                MicroGridItem(
+                hrvGridItem(
                     label = "呼吸频率",
                     value = physioState.breathingRate?.let { "%.1f".format(it) } ?: "--",
                     unit = "次/分",
-                    valueColor = com.owner.mindbody.ui.theme.MindBodyColors.PrimaryIndigo
+                    rawValue = physioState.breathingRate,
+                    veryLow = 8f, low = 12f, high = 18f, veryHigh = 24f
                 ),
-                MicroGridItem(
-                    label = "SampEn",
+                hrvGridItem(
+                    label = "节律复杂度",
                     value = physioState.sampEn?.let { "%.2f".format(it) } ?: "--",
-                    valueColor = com.owner.mindbody.ui.theme.MindBodyColors.Emerald
+                    rawValue = physioState.sampEn,
+                    veryLow = 0.3f, low = 0.8f, high = 2.0f, veryHigh = 2.5f
                 ),
-                MicroGridItem(
-                    label = "DFA α1",
+                hrvGridItem(
+                    label = "短时波动指数",
                     value = physioState.dfaAlpha1?.let { "%.2f".format(it) } ?: "--",
-                    valueColor = MindBodyColors.OnBackgroundSecondary
+                    rawValue = physioState.dfaAlpha1,
+                    veryLow = 0.5f, low = 0.75f, high = 1.25f, veryHigh = 1.5f
                 )
             ),
             columns = 2
         )
     }
+}
+
+private fun hrvGridItem(
+    label: String,
+    value: String,
+    unit: String = "",
+    rawValue: Float?,
+    veryLow: Float,
+    low: Float,
+    high: Float,
+    veryHigh: Float
+): MicroGridItem {
+    val color = hrvColor(rawValue, veryLow, low, high, veryHigh)
+    return MicroGridItem(
+        label = label,
+        value = value,
+        unit = unit,
+        valueColor = color,
+        sparklineColor = color
+    )
+}
+
+/**
+ * 五档动态色：过低→紫/蓝，正常→绿，过高→橙/红。
+ * 阈值由调用方按各 HRV 指标正常区间传入。
+ */
+private fun hrvColor(
+    value: Float?,
+    veryLow: Float,
+    low: Float,
+    high: Float,
+    veryHigh: Float
+): Color {
+    if (value == null) return MindBodyColors.OnBackgroundSecondary
+    return when {
+        value < veryLow -> MindBodyColors.PrimaryIndigo
+        value < low -> MindBodyColors.OceanBlue
+        value <= high -> MindBodyColors.Emerald
+        value <= veryHigh -> MindBodyColors.StressAmber
+        else -> MindBodyColors.AnxietyRose
+    }
+}
+
+// ── 实时传感器读数 ────────────────────────────────────────────────────────────
+
+@Composable
+private fun SensorReadingsCard(
+    currentAcc: AccSample?,
+    latestPpi: PolarPpiData.PolarPpiSample?,
+    currentSkinTemp: Float?
+) {
+    val magnitudeG = currentAcc?.let { s ->
+        sqrt((s.x * s.x + s.y * s.y + s.z * s.z).toDouble()) / 1000.0
+    }
+    val skinTempColor = hrvColor(
+        value = currentSkinTemp,
+        veryLow = 30f,
+        low = 33f,
+        high = 36.5f,
+        veryHigh = 38f
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "实时传感器",
+            style = CardTitle.copy(color = MindBodyColors.OnBackgroundSecondary)
+        )
+        MicroGrid(
+            items = listOf(
+                MicroGridItem(
+                    label = "皮肤温度",
+                    value = currentSkinTemp?.let { "%.1f".format(it) } ?: "--",
+                    unit = "°C",
+                    valueColor = skinTempColor,
+                    sparklineColor = skinTempColor
+                ),
+                MicroGridItem(
+                    label = "合加速度",
+                    value = magnitudeG?.let { "%.2f".format(it) } ?: "--",
+                    unit = "倍重力",
+                    valueColor = MindBodyColors.Emerald,
+                    sparklineColor = MindBodyColors.Emerald
+                ),
+                MicroGridItem(
+                    label = "心跳间期",
+                    value = latestPpi?.ppi?.toString() ?: "--",
+                    unit = "毫秒",
+                    valueColor = if (latestPpi?.blockerBit == true)
+                        MindBodyColors.OnBackgroundSecondary else MindBodyColors.HeartRed
+                ),
+                MicroGridItem(
+                    label = "皮肤接触",
+                    value = formatSkinContact(latestPpi),
+                    valueColor = if (latestPpi?.skinContactStatus == true)
+                        MindBodyColors.Emerald else MindBodyColors.OnBackgroundSecondary
+                )
+            ),
+            columns = 2
+        )
+    }
+}
+
+private fun formatSkinContact(ppi: PolarPpiData.PolarPpiSample?): String = when {
+    ppi == null -> "--"
+    !ppi.skinContactSupported -> "不支持"
+    ppi.skinContactStatus -> "良好"
+    else -> "较差"
 }
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────

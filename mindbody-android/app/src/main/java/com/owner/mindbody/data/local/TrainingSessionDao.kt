@@ -39,4 +39,24 @@ interface TrainingSessionDao {
         """
     )
     fun observeSessionsBetween(startMs: Long, endMs: Long): Flow<List<TrainingSessionEntity>>
+
+    @Query(
+        """
+        SELECT * FROM training_sessions
+        WHERE (
+            startTimeMs IS NOT NULL
+            AND endTimeMs IS NOT NULL
+            AND startTimeMs <= :endMs
+            AND endTimeMs >= :startMs
+        )
+        OR sessionDate = :sessionDate
+        ORDER BY COALESCE(startTimeMs, :dayStartMs) ASC
+        """
+    )
+    fun observeSessionsForDay(
+        startMs: Long,
+        endMs: Long,
+        sessionDate: String,
+        dayStartMs: Long
+    ): Flow<List<TrainingSessionEntity>>
 }

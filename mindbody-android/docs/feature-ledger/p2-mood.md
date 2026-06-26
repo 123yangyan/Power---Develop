@@ -81,8 +81,8 @@ Plan: reminder · 更新: 2026-06-15
 Plan: history-screen · 更新: 2026-06-15
 
 - **目的** 列表、预览、编辑、删除。
-- **入口** 底部导航「历史」→ `MoodHistoryScreen`
-- **文件** `MoodHistoryScreen.kt`、`MoodHistoryRowBuilder.kt`、`CoordMiniBadge.kt`、`DailyEntryIndex.kt`
+- **入口** 记录 Tab →「历史记录」分段 → `MoodHistoryContent`
+- **文件** `MoodHistoryScreen.kt`（`MoodHistoryContent`）、`MoodHistoryRowBuilder.kt`；`MoodRecordScreen.kt` 分段切换
 - **约定** 极性/逃避卡片；CoordMiniBadge/RoleMiniBadge；页码+跳转；同日 `(i/total)`；长日记 3 行可展开。
 - **验收** 保存后在历史可见；编辑/删除生效。
 
@@ -158,3 +158,16 @@ Plan: emotion-ui-v4 · 更新: 2026-06-14
 - **验收** 场景 A 2×2+展开 18 人；场景 B 胶囊贴键盘；Android 14/15 键盘无 Insets 崩溃。
 
 > 2026-06-14 PRD v4.0 情绪角色化 (#emotion-ui-v4)
+
+---
+
+### F-P2-014 日时间线 Timeline
+Plan: timeline-screen · 更新: 2026-06-26
+
+- **目的** 以纵向时间轴展示单日里程碑：训练区间、心情记录、AI 身心反馈；日汇总含步数、平均心率、焦虑事件次数。
+- **入口** 记录 Tab →「历史记录」分段 · 底部 Tab「时间」→ `TimelineScreen`
+- **文件** `ui/timeline/TimelineViewModel.kt`、`TimelineScreen.kt`；`AppNavigation.kt`；`FloatingIslandNav.kt`；`MoodRecordScreen.kt`（含历史分段）
+- **约定** 数据经 `AppStorage` 聚合（training / mood / feedbackHistory / activityMinute / hr247 / hr）；睡眠暂显示 `—`；不新增 Room 实体。
+- **验收** 周历切换日期；事件按时间升序；训练卡展示时长与区间 HR；心情卡展示角色与 HR 芯片；反馈卡展示焦虑指数与 LLM 摘要。
+
+> 2026-06-26 首版时间线 (#timeline-screen)

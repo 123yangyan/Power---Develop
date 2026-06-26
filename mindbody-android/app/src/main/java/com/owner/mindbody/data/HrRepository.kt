@@ -34,7 +34,11 @@ class HrRepository(private val database: AppDatabase) {
 
     fun observeTodaySamples(): Flow<List<HrSampleEntity>> {
         val (start, end) = todayRangeMs()
-        return dao.observeBetween(start, end)
+        return observeBetween(start, end)
+    }
+
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<HrSampleEntity>> {
+        return dao.observeBetween(startMs, endMs)
     }
 
     suspend fun getSamplesPage(limit: Int, offset: Int): List<HrSampleEntity> {

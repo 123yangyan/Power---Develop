@@ -22,14 +22,16 @@ import com.owner.mindbody.ui.components.FloatingIslandNav
 import com.owner.mindbody.ui.developer.DeveloperLogScreen
 import com.owner.mindbody.ui.developer.DeveloperStorageScreen
 import com.owner.mindbody.ui.developer.PpiUploadLogScreen
+import com.owner.mindbody.ui.device.BleCollectionSettingsScreen
 import com.owner.mindbody.ui.device.DeviceScreen
+import com.owner.mindbody.ui.device.KeepAliveSettingsScreen
+import com.owner.mindbody.ui.device.MoodReminderSettingsScreen
 import com.owner.mindbody.ui.ftu.FtuScreen
 import com.owner.mindbody.ui.heartrate.HeartRateScreen
-import com.owner.mindbody.ui.mood.MoodHistoryScreen
 import com.owner.mindbody.ui.mood.MoodRecordScreen
 import com.owner.mindbody.ui.physio.FeedbackHistoryListScreen
 import com.owner.mindbody.ui.physio.PhysioStateScreen
-import com.owner.mindbody.ui.sensors.SensorsScreen
+import com.owner.mindbody.ui.timeline.TimelineScreen
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
@@ -39,9 +41,8 @@ sealed class AppRoute(val route: String, val label: String) {
     data object HeartRate : AppRoute("heart_rate", "心率")
     data object PhysioState : AppRoute("physio_state", "状态")
     data object MoodRecord : AppRoute("mood_record", "记录")
-    data object MoodHistory : AppRoute("mood_history", "历史")
-    data object Sensors : AppRoute("sensors", "传感器")
-    data object Device : AppRoute("device", "设备")
+    data object Timeline : AppRoute("timeline", "时间")
+    data object Device : AppRoute("device", "设置")
     data object FeedbackHistory : AppRoute("feedback_history", "反馈历史")
     data object DeveloperLog : AppRoute("developer_log", "运行日志")
     data object DeveloperStorage : AppRoute("developer_storage", "storage 看板")
@@ -49,6 +50,9 @@ sealed class AppRoute(val route: String, val label: String) {
     data object Ftu : AppRoute("ftu/{deviceId}", "FTU") {
         fun create(deviceId: String) = "ftu/$deviceId"
     }
+    data object BleCollectionSettings : AppRoute("settings_ble_collection", "采集策略")
+    data object MoodReminderSettings : AppRoute("settings_mood_reminder", "心情提醒")
+    data object KeepAliveSettings : AppRoute("settings_keep_alive", "后台保活")
 }
 
 @Composable
@@ -61,8 +65,7 @@ fun AppNavigation(initialRoute: String? = null) {
         AppRoute.HeartRate,
         AppRoute.PhysioState,
         AppRoute.MoodRecord,
-        AppRoute.MoodHistory,
-        AppRoute.Sensors,
+        AppRoute.Timeline,
         AppRoute.Device
     )
     val showBottomBar = currentRoute in bottomRoutes.map { it.route }
@@ -129,11 +132,8 @@ fun AppNavigation(initialRoute: String? = null) {
             composable(AppRoute.MoodRecord.route) {
                 MoodRecordScreen()
             }
-            composable(AppRoute.MoodHistory.route) {
-                MoodHistoryScreen()
-            }
-            composable(AppRoute.Sensors.route) {
-                SensorsScreen()
+            composable(AppRoute.Timeline.route) {
+                TimelineScreen()
             }
             composable(AppRoute.Device.route) {
                 DeviceScreen(
@@ -148,8 +148,26 @@ fun AppNavigation(initialRoute: String? = null) {
                     },
                     onNavigateToPpiUploadLog = {
                         navController.navigate(AppRoute.PpiUploadLog.route)
-                    }
+                    },
+                    onNavigateToBleCollection = {
+                        navController.navigate(AppRoute.BleCollectionSettings.route)
+                    },
+                    onNavigateToMoodReminder = {
+                        navController.navigate(AppRoute.MoodReminderSettings.route)
+                    },
+                    onNavigateToKeepAlive = {
+                        navController.navigate(AppRoute.KeepAliveSettings.route)
+                    },
                 )
+            }
+            composable(AppRoute.BleCollectionSettings.route) {
+                BleCollectionSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(AppRoute.MoodReminderSettings.route) {
+                MoodReminderSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(AppRoute.KeepAliveSettings.route) {
+                KeepAliveSettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoute.DeveloperLog.route) {
                 DeveloperLogScreen(onBack = { navController.popBackStack() })

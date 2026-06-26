@@ -10,13 +10,13 @@ Plan: ui-redesign-all · 更新: 2026-06-26
 - **目的** 「工业监控器」→「文艺身心日记本」：结论先行、留白无硬边框、色彩=生理状态。
 - **Design Tokens** `ui/theme/Color.kt`（AppBackground/6档状态色）、`Shape.kt`（NarrativeCard 32dp/DataCard 24dp）、`Theme.kt`
 - **标准组件** `HeroIndicator.kt`（呼吸动画）、`NarrativeCard.kt`、`MicroGrid.kt`（2×2/2×3 Sparkline）
-- **状态 Tab** `PhysioStateScreen.kt`（Hero+叙事卡+HRV 6格）；`PhysioStateViewModel.kt`（30s 轮询 `/api/vitals/stream/status`→`AppStorage`）；`FeedbackHistoryListScreen.kt`
-- **页面重构** `HeartRateScreen.kt`、`SensorsScreen.kt`、`DeviceScreen.kt`（`StreamAnalysisCard`）；6 Tab `FloatingIslandNav.kt`；路由 `physio_state`/`feedback_history`
+- **状态 Tab** `PhysioStateScreen.kt`（Hero+叙事卡+身心分析指标/HrvAnalysisCard 五档色+实时传感器/SensorReadingsCard）；`PhysioStateViewModel.kt`（30s 轮询 + BLE 传感器流）；`FeedbackHistoryListScreen.kt`
+- **页面重构** `HeartRateScreen.kt`、`DeviceScreen.kt`（`StreamAnalysisCard`）；**5 Tab** `FloatingIslandNav.kt`；路由 `physio_state`/`feedback_history`
 - **门面** `AppStorage.kt`：`latestPhysioState`、`feedbackHistory` Flow + update 方法
 - **约定** `PhysioStateViewModel.startPolling()`/`stopPolling()` 由 Screen `DisposableEffect` 管理。
-- **验收** 6 Tab；状态页三区域；心率 Hero 呼吸动画；设备页 BLE 连接后推流状态卡。
+- **验收** 5 Tab；状态页三区域（身心分析指标五档色 + 实时传感器独立卡）；心率 Hero 呼吸动画；设备页 BLE 连接后推流状态卡。
 
-> 2026-06-26 状态 Tab 历史条形卡 (#F-P2-UI-001) · 2026-06-20 全盘 UI 重构 (#ui-redesign-all)
+> 2026-06-26 皮温从心率页移至状态页实时传感器 (#F-P2-UI-001) · 2026-06-26 状态页指标区拆分 + HRV 五档动态色 (#F-P2-UI-001) · 2026-06-26 传感器 Tab 合并至状态页生理指标详情 (#F-P2-UI-001) · 2026-06-26 状态 Tab 历史条形卡 (#F-P2-UI-001) · 2026-06-20 全盘 UI 重构 (#ui-redesign-all)
 
 ---
 

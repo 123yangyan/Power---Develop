@@ -5,6 +5,7 @@ import com.owner.mindbody.data.AccRepository
 import com.owner.mindbody.data.ActivityDayRepository
 import com.owner.mindbody.data.ActivityMinuteRepository
 import com.owner.mindbody.data.DeviceSyncPreferences
+import com.owner.mindbody.data.FeedbackHistoryCodec
 import com.owner.mindbody.data.Hr247Repository
 import com.owner.mindbody.data.HrRepository
 import com.owner.mindbody.data.LlmFeedbackEntry
@@ -22,15 +23,21 @@ import com.owner.mindbody.data.local.AppDatabase
 import com.owner.mindbody.data.sync.DeviceSyncManager
 import com.owner.mindbody.data.sync.SyncManager
 import com.owner.mindbody.data.sync.SyncPreferences
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * App 的统一存储入口。
  * 功能层只通过 app.storage.xxx 读写数据，禁止绕过门面直接访问 DAO。
  */
-class AppStorage(context: Context) {
+class AppStorage(
+    context: Context,
+    private val appScope: CoroutineScope
+) {
     val database: AppDatabase = AppDatabase.getInstance(context)
 
     // 实时 BLE 流
@@ -80,9 +87,24 @@ class AppStorage(context: Context) {
         _latestPhysioState.value = summary
     }
 
-    /** PhysioStateViewModel 调用此方法更新反馈历史。 */
+    /** PhysioStateViewModel / TimelineViewModel 调用此方法更新反馈历史。 */
     fun updateFeedbackHistory(entries: List<LlmFeedbackEntry>) {
         _feedbackHistory.value = entries
+        appScope.launch {
+            runCatching {
+                syncPreferences.saveFeedbackHistoryJson(FeedbackHistoryCodec.toStoredJson(entries))
+            }
+        }
+    }
+
+    /** 启动时从 DataStore 恢复上次缓存的反馈历史。 */
+    suspend fun loadPersistedFeedback() {
+        val json = syncPreferences.feedbackHistoryJson.first()
+        if (json.isBlank()) return
+        val entries = FeedbackHistoryCodec.fromStoredJson(json)
+        if (entries.isNotEmpty()) {
+            _feedbackHistory.value = entries
+        }
     }
 
     suspend fun flushAll() {

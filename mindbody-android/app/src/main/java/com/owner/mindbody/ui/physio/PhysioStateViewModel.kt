@@ -7,6 +7,8 @@ import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.data.LlmFeedbackEntry
 import com.owner.mindbody.data.PhysioStateSummary
 import com.owner.mindbody.notification.PhysioNotificationManager
+import com.owner.mindbody.polar.AccSample
+import com.polar.sdk.api.model.PolarPpiData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,8 +32,18 @@ import org.json.JSONObject
  */
 class PhysioStateViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val storage = (application as MindBodyApplication).storage
+    private val app = application as MindBodyApplication
+    private val storage = app.storage
     private val httpClient = OkHttpClient()
+
+    val currentAcc: StateFlow<AccSample?> = app.polarBleManager.currentAcc
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val latestPpi: StateFlow<PolarPpiData.PolarPpiSample?> = app.polarBleManager.latestPpi
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val currentSkinTemp: StateFlow<Float?> = app.polarBleManager.currentSkinTemp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val latestPhysioState: StateFlow<PhysioStateSummary?> =
         storage.latestPhysioState.stateIn(

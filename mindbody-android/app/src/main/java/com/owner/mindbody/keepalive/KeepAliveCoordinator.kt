@@ -115,10 +115,14 @@ object KeepAliveCoordinator {
 
     private fun launchForegroundService(context: Context) {
         val intent = Intent(context, HrStreamService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "startForegroundService 被系统拦截: ${e.message}")
         }
     }
 

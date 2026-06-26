@@ -1,7 +1,6 @@
 package com.owner.mindbody.util
 
 import android.app.Activity
-import android.bluetooth.le.ScanFilter
 import android.companion.AssociationRequest
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
@@ -43,7 +42,7 @@ object CompanionDeviceHelper {
      */
     fun associate(
         activity: Activity,
-        deviceMac: String?,
+        @Suppress("UNUSED_PARAMETER") deviceMac: String?,
         onDeviceFound: (IntentSender) -> Unit,
         onFailure: (String?) -> Unit,
     ) {
@@ -56,54 +55,60 @@ object CompanionDeviceHelper {
             onFailure("CompanionDeviceManager 不可用")
             return
         }
-        val filterBuilder = BluetoothLeDeviceFilter.Builder()
+        // 仅按名称匹配 Polar.*；不按 MAC 过滤——已 GATT 连接的设备通常不再广播，
+        // CDM 独立扫描器无法发现 setDeviceAddress 目标，会导致弹窗一直转圈。
+        val filter = BluetoothLeDeviceFilter.Builder()
             .setNamePattern(Pattern.compile(POLAR_NAME_PATTERN))
-        normalizeMacAddress(deviceMac)?.let { mac ->
-            filterBuilder.setScanFilter(
-                ScanFilter.Builder()
-                    .setDeviceAddress(mac)
-                    .build()
-            )
-        }
-        val request = AssociationRequest.Builder()
-            .addDeviceFilter(filterBuilder.build())
-            .setSingleDevice(!deviceMac.isNullOrBlank())
             .build()
-        manager.associate(
-            request,
-            object : CompanionDeviceManager.Callback() {
-                @Suppress("OVERRIDE_DEPRECATION")
-                override fun onDeviceFound(chooserLauncher: IntentSender) {
-                    onDeviceFound(chooserLauncher)
-                }
+        val request = AssociationRequest.Builder()
+            .addDeviceFilter(filter)
+            .setSingleDevice(false)
+            .build()
+        try {
+            manager.associate(
+                request,
+                object : CompanionDeviceManager.Callback() {
+                    @Suppress("OVERRIDE_DEPRECATION")
+                    override fun onDeviceFound(chooserLauncher: IntentSender) {
+                        onDeviceFound(chooserLauncher)
+                    }
 
-                override fun onFailure(error: CharSequence?) {
-                    AppLogger.w(TAG, "associate onFailure: $error")
-                    onFailure(error?.toString())
-                }
-            },
-            null,
-        )
+                    override fun onFailure(error: CharSequence?) {
+                        AppLogger.w(TAG, "associate onFailure: $error")
+                        onFailure(error?.toString())
+                    }
+                },
+                null,
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "associate() 抛出异常: ${e.message}")
+            onFailure(e.message)
+        }
     }
 
     fun getAssociations(context: Context): List<CompanionAssociation> {
         if (!isSupported()) return emptyList()
         val manager = context.getSystemService(CompanionDeviceManager::class.java) ?: return emptyList()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            manager.myAssociations.map { info ->
-                CompanionAssociation(
-                    id = info.id,
-                    macAddress = normalizeMacAddress(info.deviceMacAddress?.toString()) ?: "",
-                )
-            }.filter { it.macAddress.isNotBlank() }
-        } else {
-            @Suppress("DEPRECATION")
-            manager.associations.map { mac ->
-                CompanionAssociation(
-                    id = UNKNOWN_ASSOCIATION_ID,
-                    macAddress = normalizeMacAddress(mac) ?: mac,
-                )
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                manager.myAssociations.map { info ->
+                    CompanionAssociation(
+                        id = info.id,
+                        macAddress = normalizeMacAddress(info.deviceMacAddress?.toString()) ?: "",
+                    )
+                }.filter { it.macAddress.isNotBlank() }
+            } else {
+                @Suppress("DEPRECATION")
+                manager.associations.map { mac ->
+                    CompanionAssociation(
+                        id = UNKNOWN_ASSOCIATION_ID,
+                        macAddress = normalizeMacAddress(mac) ?: mac,
+                    )
+                }
             }
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "getAssociations failed: ${e.message}")
+            emptyList()
         }
     }
 

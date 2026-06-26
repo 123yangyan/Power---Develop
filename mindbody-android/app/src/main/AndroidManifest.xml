@@ -43,6 +43,10 @@
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
+    <!-- CompanionDeviceManager.associate() 必需；required=false 以便不支持 CDM 的设备仍可安装 -->
+    <uses-feature
+        android:name="android.software.companion_device_setup"
+        android:required="false" />
 
     <application
         android:name=".MindBodyApplication"

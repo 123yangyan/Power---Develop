@@ -41,12 +41,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.ui.components.PremiumCard
-import com.owner.mindbody.ui.components.SectionHeader
 import com.owner.mindbody.ui.theme.CardTitle
 import com.owner.mindbody.ui.theme.MindBodyColors
 
 @Composable
-fun MoodHistoryScreen(
+fun MoodHistoryContent(
+    modifier: Modifier = Modifier,
     viewModel: MoodHistoryViewModel = viewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
@@ -83,11 +83,8 @@ fun MoodHistoryScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+        modifier = modifier.fillMaxSize()
     ) {
-        SectionHeader(eyebrow = "心情", title = "历史记录")
         Text(
             text = "共 ${entries.size} 条",
             fontSize = 13.sp,
@@ -106,9 +103,12 @@ fun MoodHistoryScreen(
 
         if (entries.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("暂无记录，去「记录」页写下第一条吧", color = MindBodyColors.OnBackgroundSecondary)
+                Text(
+                    "暂无记录，切换到「记录此刻」写下第一条吧",
+                    color = MindBodyColors.OnBackgroundSecondary
+                )
             }
-            return
+            return@Column
         }
 
         HistoryToolbar(

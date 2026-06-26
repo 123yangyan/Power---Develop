@@ -27,4 +27,13 @@ class TrainingRepository(private val database: AppDatabase) {
     fun observeSessionsBetween(startMs: Long, endMs: Long): Flow<List<TrainingSessionEntity>> {
         return dao.observeSessionsBetween(startMs, endMs)
     }
+
+    fun observeSessionsForDay(
+        startMs: Long,
+        endMs: Long,
+        sessionDate: String,
+        dayStartMs: Long
+    ): Flow<List<TrainingSessionEntity>> {
+        return dao.observeSessionsForDay(startMs, endMs, sessionDate, dayStartMs)
+    }
 }

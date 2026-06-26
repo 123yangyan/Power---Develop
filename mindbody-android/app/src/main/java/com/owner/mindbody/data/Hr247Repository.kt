@@ -40,7 +40,11 @@ class Hr247Repository(private val database: AppDatabase) {
     /** 观察今日 24/7 离线心率样本（断联期间由手表记录、重连后同步）。 */
     fun observeTodaySamples(): Flow<List<Hr247SampleEntity>> {
         val (start, end) = todayRangeMs()
-        return dao.observeBetween(start, end)
+        return observeBetween(start, end)
+    }
+
+    fun observeBetween(startMs: Long, endMs: Long): Flow<List<Hr247SampleEntity>> {
+        return dao.observeBetween(startMs, endMs)
     }
 
     private fun todayRangeMs(): Pair<Long, Long> {

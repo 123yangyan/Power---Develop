@@ -19,7 +19,11 @@ import com.owner.mindbody.worker.PruneDataWorker
 import com.owner.mindbody.worker.SyncWorker
 import androidx.work.ExistingWorkPolicy
 import com.polar.sdk.api.PolarBleApiDefaultImpl
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class MindBodyApplication : Application() {
@@ -41,10 +45,15 @@ class MindBodyApplication : Application() {
 
     val ppiUploadLogBuffer: PpiUploadLogBuffer = PpiUploadLogBuffer()
 
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         try {
-            storage = AppStorage(this)
+            storage = AppStorage(this, applicationScope)
+            applicationScope.launch {
+                storage.loadPersistedFeedback()
+            }
             devicePreferences = DevicePreferences(this)
             moodPreferences = MoodPreferences(this)
             developerPreferences = DeveloperPreferences(this)

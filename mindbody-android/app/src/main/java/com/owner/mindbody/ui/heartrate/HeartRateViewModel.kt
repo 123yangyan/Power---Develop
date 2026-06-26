@@ -68,6 +68,9 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
     val connectionState: StateFlow<ConnectionState> = app.polarBleManager.connectionState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionState.DISCONNECTED)
 
+    val batteryLevel: StateFlow<Int?> = app.polarBleManager.batteryLevel
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     /** 实时流 + 24/7 离线样本合并，供图表无缝展示 */
     val todaySamples: StateFlow<List<HrSampleEntity>> = combine(
         hrRepository.observeTodaySamples(),

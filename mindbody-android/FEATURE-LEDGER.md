@@ -6,7 +6,7 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-26 · **已实现 40 条 + 稳定性 11 条**
+**最后更新**：2026-06-26 · **已实现 41 条 + 稳定性 11 条**
 
 ---
 
@@ -36,7 +36,7 @@
 | F-P1-004 | BLE 连接模式切换 | [p1](docs/feature-ledger/p1-ble-device.md) | PERSISTENT vs ON_DEMAND | phase1-android-polar |
 | F-P1-005 | connectForSnapshot 短连接快照 | [p1](docs/feature-ledger/p1-ble-device.md) | 5s HR 快照，30s 超时 | phase1-android-polar |
 | F-P1-006 | 心率页 UI 与统计曲线 | [p1](docs/feature-ledger/p1-ble-device.md) | BPM + 今日统计 + 折线 | phase1-android-polar |
-| F-P1-007 | 设备页与配对引导 | [p1](docs/feature-ledger/p1-ble-device.md) | 扫描连接 FTU 引导 | phase1-android-polar |
+| F-P1-007 | 设置页（原设备页） | [p1](docs/feature-ledger/p1-ble-device.md) | 主屏单行入口 + 3 次级设置页 | phase1-android-polar |
 | F-P1-008 | DevicePreferences DataStore | [p1](docs/feature-ledger/p1-ble-device.md) | 非 Room 偏好含夜间 BLE 时间 | phase1-android-polar |
 | F-P1-009 | 在线传感器流全量落库 | [p1](docs/feature-ledger/p1-ble-device.md) | 皮温/ACC/PPI 在线流 Room | stream-entities |
 | F-P1-010 | 设备离线数据同步落库 | [p1](docs/feature-ledger/p1-ble-device.md) | DeviceSyncManager 8 表 | sync-device-manager |
@@ -58,11 +58,12 @@
 | F-P2-011 | 强弹窗 CheckIn + snooze | [p2](docs/feature-ledger/p2-mood.md) | FSI 探查 + 逃避记录 | wave-b-checkin-dialog |
 | F-P2-012 | 历史 CoordMiniBadge 增强 | [p2](docs/feature-ledger/p2-mood.md) | 角色/象限 badge 分页 | wave-c-history-polish |
 | F-P2-013 | 情绪角色化 UI v4 | [p2](docs/feature-ledger/p2-mood.md) | 4 人舞台 + 9 人探查 | emotion-ui-v4 |
+| F-P2-014 | 日时间轴「时间」Tab | [p2](docs/feature-ledger/p2-mood.md) | 训练/心情/焦虑反馈纵向轴 | timeline-screen |
 | F-P3-001 | SyncManager ts 修复 | [p3](docs/feature-ledger/p3-sync-cloud.md) | ActivityDay/Sleep ts 非 0 | fix-ts-zero |
 | F-P3-002 | DeviceScreen 同步状态 UI | [p3](docs/feature-ledger/p3-sync-cloud.md) | DeviceSyncStatusRow | add-devicesync-ui |
 | F-P3-003 | 睡眠拉取与云端上传修复 | [p3](docs/feature-ledger/p3-sync-cloud.md) | 3 天滚动重拉 + 合并 upsert | sleep-upload-fix |
 | F-P3-004 | 实时 PPI 推流管道 | [p3](docs/feature-ledger/p3-sync-cloud.md) | 90s 推流 + 15min 兜底 | p1a~p1e |
-| F-P2-UI-001 | UI 全盘重构（日记本） | [p4](docs/feature-ledger/p4-ui-physio-push.md) | Hero/Narrative/MicroGrid + 6 Tab | ui-redesign-all |
+| F-P2-UI-001 | UI 全盘重构（日记本） | [p4](docs/feature-ledger/p4-ui-physio-push.md) | Hero/Narrative/MicroGrid + 5 Tab | ui-redesign-all |
 | F-P5-001 | ntfy 推送通知 | [p4](docs/feature-ledger/p4-ui-physio-push.md) | ntfy WebSocket + 本地告警 | p5a~p5b |
 
 ### 稳定性修复
@@ -85,4 +86,8 @@
 
 ## 变更记录
 
+- 2026-06-26：F-P1-007 设置次级页 — 采集策略/心情提醒/后台保活迁入独立界面，主屏仅保留单行入口
+- 2026-06-26：F-P1-006 心率页头部精简（去页眉/角标、统一 BLE 四档文案、Hero 下电量行）
+- 2026-06-26：F-P2-UI-001 状态页指标区拆分 + HRV 五档动态色
+- 2026-06-26：F-P2-UI-001 传感器 Tab 合并至状态页；底部导航 5 Tab
 - 2026-06-26：清单分层重构（总索引 + 6 分文件）；PPI 推流重编号 F-P3-004

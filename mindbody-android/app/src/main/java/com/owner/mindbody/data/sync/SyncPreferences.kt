@@ -36,6 +36,7 @@ class SyncPreferences(private val context: Context) {
     private val enabledKey = booleanPreferencesKey("sync_enabled")
     private val lastSyncTimeKey = longPreferencesKey("sync_last_time")
     private val lastSyncResultKey = stringPreferencesKey("sync_last_result")
+    private val feedbackHistoryJsonKey = stringPreferencesKey("feedback_history_json")
 
     val baseUrl: Flow<String> = context.syncDataStore.data.map {
         normalizeBaseUrl(it[baseUrlKey] ?: "")
@@ -45,6 +46,9 @@ class SyncPreferences(private val context: Context) {
     val syncEnabled: Flow<Boolean> = context.syncDataStore.data.map { it[enabledKey] ?: false }
     val lastSyncTime: Flow<Long> = context.syncDataStore.data.map { it[lastSyncTimeKey] ?: 0L }
     val lastSyncResult: Flow<String> = context.syncDataStore.data.map { it[lastSyncResultKey] ?: "" }
+    val feedbackHistoryJson: Flow<String> = context.syncDataStore.data.map {
+        it[feedbackHistoryJsonKey] ?: ""
+    }
 
     suspend fun setBaseUrl(url: String) {
         context.syncDataStore.edit { it[baseUrlKey] = normalizeBaseUrl(url) }
@@ -65,5 +69,9 @@ class SyncPreferences(private val context: Context) {
             prefs[lastSyncTimeKey] = timeMs
             prefs[lastSyncResultKey] = result
         }
+    }
+
+    suspend fun saveFeedbackHistoryJson(json: String) {
+        context.syncDataStore.edit { it[feedbackHistoryJsonKey] = json }
     }
 }
