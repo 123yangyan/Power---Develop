@@ -19,6 +19,7 @@ import com.owner.mindbody.worker.PruneDataWorker
 import com.owner.mindbody.worker.SyncWorker
 import androidx.work.ExistingWorkPolicy
 import com.polar.sdk.api.PolarBleApiDefaultImpl
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
 class MindBodyApplication : Application() {
@@ -60,11 +61,16 @@ class MindBodyApplication : Application() {
             SyncWorker.schedulePeriodic(this)
             PpiStreamWorker.scheduleRepeating(this)
             PruneDataWorker.schedulePeriodic(this)
-            BleSchedulerWorker.scheduleNext(
-                this,
-                BleSchedulerWorker.ACTION_DISCONNECT,
-                policy = ExistingWorkPolicy.KEEP
-            )
+            runBlocking {
+                if (devicePreferences.bleNightlyScheduleEnabled.first()) {
+                    BleSchedulerWorker.scheduleFromPreferences(
+                        this@MindBodyApplication,
+                        ExistingWorkPolicy.KEEP
+                    )
+                } else {
+                    BleSchedulerWorker.cancel(this@MindBodyApplication)
+                }
+            }
         } catch (e: Exception) {
             AppLogger.e("MindBodyApp", "初始化失败，请重启应用", e)
             android.widget.Toast.makeText(

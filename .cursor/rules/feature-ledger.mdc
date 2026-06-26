@@ -5,7 +5,8 @@ alwaysApply: true
 
 # 功能实现清单（mindbody-android 专用）
 
-权威清单：[`mindbody-android/FEATURE-LEDGER.md`](../../mindbody-android/FEATURE-LEDGER.md)
+权威入口：[`mindbody-android/FEATURE-LEDGER.md`](../../mindbody-android/FEATURE-LEDGER.md)（总索引）  
+分清单目录：[`mindbody-android/docs/feature-ledger/`](../../mindbody-android/docs/feature-ledger/) · 模板 [`_template.md`](../../mindbody-android/docs/feature-ledger/_template.md)
 
 **范围**：仅 `mindbody-android/` 工程内**已实现**功能。不包含 server、app-main、emotion 参考库等。  
 **待做特性**：只看 [`.cursor/plans/`](../plans/)，**不在清单中预填 pending 条目**。
@@ -23,18 +24,19 @@ alwaysApply: true
 
 ## 执行前（Agent 必须做）
 
-1. 打开 `mindbody-android/FEATURE-LEDGER.md`，匹配已有功能 ID，读「已实现方案」，避免重复或破坏约定。
-2. 若任务是新功能且清单无对应条目：**不要**预先添加 pending；改读对应 Plan 的 todo 与待实施设计。
-3. 在回复开头写 `对齐清单：F-Px-xxx`（若匹配到已有条目）或 `对齐 Plan：todo-id`（新功能）。
-4. 与已实现方案或架构红线冲突时，停手并说明冲突。
+1. 打开 `mindbody-android/FEATURE-LEDGER.md`（总索引），匹配已有功能 ID 或关键词。
+2. **仅打开**索引「分清单」列指向的对应文件（如 `docs/feature-ledger/p2-mood.md`），读该条目的目的/入口/约定/验收；**不要**加载全部分清单。
+3. 若任务是新功能且索引无对应条目：**不要**预先添加 pending；改读对应 Plan 的 todo 与待实施设计。
+4. 在回复开头写 `对齐清单：F-Px-xxx`（若匹配到已有条目）或 `对齐 Plan：todo-id`（新功能）。
+5. 与已实现方案或架构红线冲突时，停手并说明冲突。
 
 ---
 
 ## 执行后（功能已落地时 Agent 必须做）
 
-1. **追加或更新**清单条目（仅 mindbody-android 内已完成的代码）。
-2. 写入「已实现方案」：入口、关键文件（相对 `com/owner/mindbody/`）、调用约定、验收要点。
-3. 更新索引表与「变更记录」；更新「最后更新」日期。
+1. **追加或更新**对应 Phase 分清单条目（仅 mindbody-android 内已完成的代码）；格式见 `_template.md`。
+2. 写入：目的、入口、关键文件（相对 `com/owner/mindbody/`）、约定、验收要点。
+3. 更新总索引 `FEATURE-LEDGER.md` 一行摘要 + 「变更记录」；更新「最后更新」日期。
 4. 同步对应 Plan todo 为 `completed`。
 5. 用户可见行为变化时提醒更新 `mindbody-android/PRODUCT.md`。
 

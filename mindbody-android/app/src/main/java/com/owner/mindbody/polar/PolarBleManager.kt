@@ -5,6 +5,8 @@ import com.owner.mindbody.data.DevicePreferences
 import com.owner.mindbody.data.stream.PpiLiveBuffer
 import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.data.sync.DeviceSyncManager
+import com.owner.mindbody.keepalive.KeepAliveCoordinator
+import com.owner.mindbody.keepalive.KeepAliveReason
 import com.owner.mindbody.util.AppLogger
 import com.owner.mindbody.util.BlePermissionHelper
 import com.polar.androidcommunications.api.ble.model.DisInfo
@@ -128,6 +130,9 @@ class PolarBleManager(
     private val _currentHr = MutableStateFlow<Int?>(null)
     val currentHr: StateFlow<Int?> = _currentHr.asStateFlow()
 
+    private val _lastHrSampleMs = MutableStateFlow(0L)
+    val lastHrSampleMs: StateFlow<Long> = _lastHrSampleMs.asStateFlow()
+
     /** 当前皮肤温度（摄氏度），来自 Loop 在线流。 */
     private val _currentSkinTemp = MutableStateFlow<Float?>(null)
     val currentSkinTemp: StateFlow<Float?> = _currentSkinTemp.asStateFlow()
@@ -185,6 +190,16 @@ class PolarBleManager(
     private fun setStatus(message: String) {
         _statusMessage.value = message
         AppLogger.i(TAG, message)
+    }
+
+    /** BLE 断连时 SDK Channel 关闭属预期；其他异常仍记 ERROR。 */
+    private fun logOnlineStreamError(streamLabel: String, e: Throwable) {
+        if (e is java.util.concurrent.CancellationException) {
+            AppLogger.w(TAG, "$streamLabel stream closed", e)
+        } else {
+            AppLogger.e(TAG, "$streamLabel stream error", e)
+            setStatus("${streamLabel}流中断：${e.message}")
+        }
     }
 
     init {
@@ -367,7 +382,7 @@ class PolarBleManager(
         stopSkinTempStreaming()
         stopAccStreaming()
         stopPpiStreaming()
-        HrStreamService.stop(appContext)
+        KeepAliveCoordinator.stop(appContext, KeepAliveReason.USER_DISCONNECT)
         api.disconnectFromDevice(id)
     }
 
@@ -586,12 +601,14 @@ class PolarBleManager(
                 ).maxSettings()
                 api.startSkinTemperatureStreaming(deviceId, settings)
                     .catch { e ->
-                        AppLogger.e(TAG, "Skin temp stream error", e)
-                        setStatus("皮肤温度流中断：${e.message}")
+                        if (e is CancellationException) throw e
+                        logOnlineStreamError("Skin temp", e)
                     }
                     .collect { data ->
                         processSkinTempData(data)
                     }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.w(TAG, "Skin temp settings failed", e)
                 setStatus("皮肤温度启动失败：${e.message}")
@@ -623,12 +640,14 @@ class PolarBleManager(
                     ?: 52L
                 api.startAccStreaming(deviceId, settings)
                     .catch { e ->
-                        AppLogger.e(TAG, "ACC stream error", e)
-                        setStatus("加速度流中断：${e.message}")
+                        if (e is CancellationException) throw e
+                        logOnlineStreamError("ACC", e)
                     }
                     .collect { data ->
                         processAccData(data)
                     }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.w(TAG, "ACC settings failed", e)
                 setStatus("加速度启动失败：${e.message}")
@@ -651,12 +670,14 @@ class PolarBleManager(
             try {
                 api.startPpiStreaming(deviceId)
                     .catch { e ->
-                        AppLogger.e(TAG, "PPI stream error", e)
-                        setStatus("PPI 流中断：${e.message}")
+                        if (e is CancellationException) throw e
+                        logOnlineStreamError("PPI", e)
                     }
                     .collect { data ->
                         processPpiData(data)
                     }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.w(TAG, "PPI stream failed", e)
                 setStatus("PPI 启动失败：${e.message}")
@@ -737,6 +758,7 @@ class PolarBleManager(
             val hr = sample.hr
             if (hr > 0) {
                 _currentHr.value = hr
+                _lastHrSampleMs.value = now
                 val rr = sample.rrsMs.firstOrNull()
                 storage.hr.saveSample(
                     timestamp = now,
@@ -758,6 +780,7 @@ class PolarBleManager(
             stopSkinTempStreaming()
             stopAccStreaming()
             stopPpiStreaming()
+            KeepAliveCoordinator.stop(appContext, KeepAliveReason.BLE_OFF)
         } else {
             tryAutoConnectSavedDevice(force = true)
         }
@@ -774,7 +797,7 @@ class PolarBleManager(
         _connectedDeviceId.value = polarDeviceInfo.deviceId
         setStatus("已连接 ${polarDeviceInfo.deviceId}")
         AppLogger.i(TAG, "deviceConnected id=${polarDeviceInfo.deviceId} name=${polarDeviceInfo.name}")
-        HrStreamService.start(appContext)
+        KeepAliveCoordinator.start(appContext, KeepAliveReason.DEVICE_CONNECTED)
         hrFeatureReady = false
         scope.launch {
             // GATT 服务刚连接时 BLE 通道尚未稳定，延迟后再查 FTU
@@ -806,6 +829,7 @@ class PolarBleManager(
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedDeviceId.value = null
         _currentHr.value = null
+        _lastHrSampleMs.value = 0L
         _batteryLevel.value = null // 断开时清除电量，避免旧值残留
         hrFeatureReady = false
         deviceSyncManager.resetFeatureFlags()
@@ -815,7 +839,7 @@ class PolarBleManager(
         stopPpiStreaming()
         // 仅在真实断连时停服务；GATT 清理临时断（userInitiatedDisconnect=true）不停
         if (!userInitiatedDisconnect) {
-            HrStreamService.stop(appContext)
+            KeepAliveCoordinator.stop(appContext, KeepAliveReason.DEVICE_DISCONNECTED)
         }
         setStatus("已断开 ${polarDeviceInfo.deviceId}")
         AppLogger.i(

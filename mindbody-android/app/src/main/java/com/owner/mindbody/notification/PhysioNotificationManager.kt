@@ -75,7 +75,7 @@ object PhysioNotificationManager {
             notificationId,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("nav_target", "physio_state")
+                putExtra(MainActivity.EXTRA_NAVIGATE_TO, "physio_state")
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -86,7 +86,7 @@ object PhysioNotificationManager {
             notificationId + 10,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("nav_target", "mood_record")
+                putExtra(MainActivity.EXTRA_NAVIGATE_TO, MainActivity.ROUTE_MOOD_RECORD)
                 putExtra("notification_id", notificationId)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

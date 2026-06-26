@@ -1,6 +1,10 @@
 package com.owner.mindbody.ui.device
 
 import android.app.TimePickerDialog
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -54,6 +60,7 @@ import com.owner.mindbody.data.MoodPreferences
 import com.owner.mindbody.ui.mood.MoodRecordViewModel
 import com.owner.mindbody.ui.mood.MoodSettingsSection
 import com.owner.mindbody.BuildConfig
+import com.owner.mindbody.keepalive.KeepAliveStatus
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
 import com.owner.mindbody.MindBodyApplication
@@ -67,6 +74,7 @@ import com.owner.mindbody.ui.theme.MindBodyColors
 import com.owner.mindbody.ui.theme.MindBodyShapes
 import com.owner.mindbody.ui.theme.StatLabel
 import com.owner.mindbody.ui.theme.StatValue
+import com.owner.mindbody.util.CompanionDeviceHelper
 import com.owner.mindbody.util.PowerKeepAlive
 
 @Composable
@@ -88,6 +96,7 @@ fun DeviceScreen(
     val mode by viewModel.connectionMode.collectAsState()
     val bedtimeHour by viewModel.bedtimeHour.collectAsState()
     val wakeHour by viewModel.wakeHour.collectAsState()
+    val bleNightlyScheduleEnabled by viewModel.bleNightlyScheduleEnabled.collectAsState()
     val developerMode by viewModel.developerModeEnabled.collectAsState()
     val syncUrl by viewModel.syncBaseUrl.collectAsState()
     val syncKey by viewModel.syncApiKey.collectAsState()
@@ -96,6 +105,33 @@ fun DeviceScreen(
     val ntfyTopic by viewModel.ntfyTopic.collectAsState()
     val deviceSyncStatus by viewModel.deviceSyncStatus.collectAsState()
     val deviceSyncError by viewModel.deviceSyncError.collectAsState()
+    val keepAliveStatus by viewModel.keepAliveStatus.collectAsState()
+    val companionAssociated by viewModel.companionAssociated.collectAsState()
+
+    val activity = context as? Activity
+    val associateLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val deviceId = connectedId ?: savedId
+        if (deviceId != null) {
+            viewModel.onCompanionAssociationComplete(
+                deviceId = deviceId,
+                success = result.resultCode == Activity.RESULT_OK,
+            )
+        }
+    }
+
+    LaunchedEffect(connectionState, connectedId) {
+        if (connectionState != ConnectionState.CONNECTED) return@LaunchedEffect
+        val deviceId = connectedId ?: return@LaunchedEffect
+        if (!viewModel.shouldPromptCompanionAssociation(deviceId)) return@LaunchedEffect
+        val hostActivity = activity ?: return@LaunchedEffect
+        viewModel.startCompanionAssociation(hostActivity, deviceId) { intentSender ->
+            associateLauncher.launch(
+                IntentSenderRequest.Builder(intentSender).build(),
+            )
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -199,8 +235,10 @@ fun DeviceScreen(
         }
 
         BleScheduleCard(
+            enabled = bleNightlyScheduleEnabled,
             bedtimeHour = bedtimeHour,
             wakeHour = wakeHour,
+            onEnabledChange = viewModel::setBleNightlyScheduleEnabled,
             onBedtimeHourChange = viewModel::setBedtimeHour,
             onWakeHourChange = viewModel::setWakeHour,
         )
@@ -277,7 +315,23 @@ fun DeviceScreen(
             }
         }
 
-        BackgroundKeepAliveCard()
+        BackgroundKeepAliveCard(
+            keepAliveStatus = keepAliveStatus,
+            companionAssociated = companionAssociated,
+            companionSupported = CompanionDeviceHelper.isSupported(),
+            connectedDeviceId = connectedId ?: savedId,
+            onResume = { viewModel.refreshKeepAlive() },
+            onAssociateCompanion = {
+                val deviceId = connectedId ?: savedId
+                val hostActivity = activity
+                if (deviceId.isNullOrBlank() || hostActivity == null) return@BackgroundKeepAliveCard
+                viewModel.startCompanionAssociation(hostActivity, deviceId) { intentSender ->
+                    associateLauncher.launch(
+                        IntentSenderRequest.Builder(intentSender).build(),
+                    )
+                }
+            },
+        )
 
         PairingTipsCard()
 
@@ -515,22 +569,37 @@ private fun FtuProfileGrid(ftuDone: Boolean) {
 
 @Composable
 private fun BleScheduleCard(
+    enabled: Boolean,
     bedtimeHour: Int,
     wakeHour: Int,
+    onEnabledChange: (Boolean) -> Unit,
     onBedtimeHourChange: (Int) -> Unit,
     onWakeHourChange: (Int) -> Unit,
 ) {
     val context = LocalContext.current
 
     PremiumCard {
-        Text(text = "夜间自动断联", style = CardTitle)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "夜间自动断联", style = CardTitle)
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange
+            )
+        }
         Column(
-            modifier = Modifier.padding(top = 14.dp),
+            modifier = Modifier
+                .padding(top = 14.dp)
+                .alpha(if (enabled) 1f else 0.45f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             BleScheduleTimeRow(
                 label = "断联时间",
                 hour = bedtimeHour,
+                enabled = enabled,
                 onClick = {
                     TimePickerDialog(
                         context,
@@ -544,6 +613,7 @@ private fun BleScheduleCard(
             BleScheduleTimeRow(
                 label = "重连时间",
                 hour = wakeHour,
+                enabled = enabled,
                 onClick = {
                     TimePickerDialog(
                         context,
@@ -556,7 +626,11 @@ private fun BleScheduleCard(
             )
         }
         Text(
-            text = "每日自动断联并在晨间重连",
+            text = if (enabled) {
+                "每日自动断联并在晨间重连"
+            } else {
+                "已关闭，设备将保持常连"
+            },
             style = StatLabel,
             modifier = Modifier.padding(top = 10.dp)
         )
@@ -567,6 +641,7 @@ private fun BleScheduleCard(
 private fun BleScheduleTimeRow(
     label: String,
     hour: Int,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -584,7 +659,13 @@ private fun BleScheduleTimeRow(
                     MindBodyColors.PrimaryIndigo.copy(alpha = 0.12f),
                     MindBodyShapes.RadioOption
                 )
-                .clickable(onClick = onClick)
+                .then(
+                    if (enabled) {
+                        Modifier.clickable(onClick = onClick)
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Text(
@@ -670,20 +751,39 @@ private fun DeviceItem(device: ScannedDevice, onConnect: () -> Unit) {
 }
 
 @Composable
-private fun BackgroundKeepAliveCard() {
+private fun BackgroundKeepAliveCard(
+    keepAliveStatus: KeepAliveStatus,
+    companionAssociated: Boolean,
+    companionSupported: Boolean,
+    connectedDeviceId: String?,
+    onResume: () -> Unit,
+    onAssociateCompanion: () -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var batteryExempt by remember { mutableStateOf(PowerKeepAlive.isIgnoringBatteryOptimizations(context)) }
+    val batteryExempt = keepAliveStatus.batteryExempt
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                batteryExempt = PowerKeepAlive.isIgnoringBatteryOptimizations(context)
+                onResume()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    val fgsActive = keepAliveStatus.foregroundRunning
+    val bleActive = keepAliveStatus.bleState == ConnectionState.CONNECTED
+    val heartbeatLabel = when {
+        keepAliveStatus.lastHeartbeatMs <= 0L -> "等待中"
+        keepAliveStatus.heartbeatFresh -> {
+            val sec = ((System.currentTimeMillis() - keepAliveStatus.lastHeartbeatMs) / 1000).coerceAtLeast(0)
+            "${sec} 秒前"
+        }
+        else -> "已过期"
+    }
+    val heartbeatActive = keepAliveStatus.heartbeatFresh
 
     PremiumCard(contentPadding = 16.dp) {
         Row(
@@ -697,6 +797,45 @@ private fun BackgroundKeepAliveCard() {
                 active = batteryExempt
             )
         }
+        Column(
+            modifier = Modifier.padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            KeepAliveStatusRow(
+                label = "前台服务",
+                value = if (fgsActive) "运行中" else "未运行",
+                active = fgsActive,
+            )
+            KeepAliveStatusRow(
+                label = "BLE",
+                value = bleStateLabel(keepAliveStatus.bleState),
+                active = bleActive,
+            )
+            KeepAliveStatusRow(
+                label = "心跳",
+                value = heartbeatLabel,
+                active = heartbeatActive,
+            )
+            if (companionSupported) {
+                KeepAliveStatusRow(
+                    label = "伴随设备 (CDM)",
+                    value = if (companionAssociated) "已关联" else "未关联",
+                    active = companionAssociated,
+                )
+            }
+        }
+        if (companionSupported && !companionAssociated && !connectedDeviceId.isNullOrBlank()) {
+            Text(
+                text = "关联伴随设备可提升后台优先级，减少被系统清理的概率（Android 官方机制）。",
+                style = StatLabel,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        Text(
+            text = "若 BLE 已连接但前台服务未运行，多为厂商杀进程；若前台服务在但 BLE 断开，多为蓝牙问题。",
+            style = StatLabel,
+            modifier = Modifier.padding(top = 8.dp)
+        )
         Text(
             text = "息屏后需保持 BLE 连接与 PPI 推流。小米 HyperOS 请完成以下设置：",
             style = StatLabel,
@@ -731,6 +870,15 @@ private fun BackgroundKeepAliveCard() {
                     Text("设为无限制")
                 }
             }
+            if (companionSupported && !companionAssociated && !connectedDeviceId.isNullOrBlank()) {
+                OutlinedButton(
+                    onClick = onAssociateCompanion,
+                    modifier = Modifier.weight(1f),
+                    shape = MindBodyShapes.RadioOption
+                ) {
+                    Text("关联伴随设备")
+                }
+            }
             OutlinedButton(
                 onClick = { PowerKeepAlive.openAutoStartSettings(context) },
                 modifier = Modifier.weight(1f),
@@ -740,6 +888,25 @@ private fun BackgroundKeepAliveCard() {
             }
         }
     }
+}
+
+@Composable
+private fun KeepAliveStatusRow(label: String, value: String, active: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, style = StatLabel)
+        StatusBadge(text = value, active = active)
+    }
+}
+
+private fun bleStateLabel(state: ConnectionState): String = when (state) {
+    ConnectionState.CONNECTED -> "已连接"
+    ConnectionState.CONNECTING -> "连接中"
+    ConnectionState.BLE_OFF -> "蓝牙关闭"
+    ConnectionState.DISCONNECTED -> "已断开"
 }
 
 @Composable

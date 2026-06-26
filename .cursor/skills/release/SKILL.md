@@ -74,7 +74,7 @@ Phase 里程碑发版：**minor + 1、patch 归零**（如 `0.2.3` → `0.3.0`�
 发版 Notes 应比 push 更丰富，建议从以下来源整理：
 
 1. **自上一 minor tag 以来的 patch tags**：`git log v0.2.0..HEAD --oneline`
-2. **`FEATURE-LEDGER.md`**：本 Phase 新增/更新的 `F-Px-xxx` 条目
+2. **`FEATURE-LEDGER.md` 总索引** + 本 Phase 涉及的 **`docs/feature-ledger/*.md` 分清单**：新增/更新的 `F-Px-xxx` 条目
 3. **对应 Plan**：完成的 todo 列表（如 `phase3云端融合`）
 4. **用户可见变化**：入口、交互、数据模型变更
 5. **已知限制 / 下一 Phase 依赖**

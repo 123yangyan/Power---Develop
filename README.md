@@ -8,7 +8,7 @@
 
 远程仓库：[123yangyan/Power---Develop](https://github.com/123yangyan/Power---Develop)
 
-**mindbody-android 功能清单**（仅已实现）：[`mindbody-android/FEATURE-LEDGER.md`](mindbody-android/FEATURE-LEDGER.md)
+**mindbody-android 功能清单**（仅已实现）：[`FEATURE-LEDGER.md`](mindbody-android/FEATURE-LEDGER.md)（总索引）· [分清单](mindbody-android/docs/feature-ledger/)
 
 ---
 

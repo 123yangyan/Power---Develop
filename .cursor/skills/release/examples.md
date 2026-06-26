@@ -11,7 +11,7 @@
 Agent 应：
 
 1. 建议下一版本 `0.3.0`
-2. 汇总 `v0.2.0` 以来 patch tags 与 FEATURE-LEDGER
+2. 汇总 `v0.2.0` 以来 patch tags 与 FEATURE-LEDGER 总索引及分清单
 3. 草拟 Message + Notes，用户确认后执行：
 
 ```powershell

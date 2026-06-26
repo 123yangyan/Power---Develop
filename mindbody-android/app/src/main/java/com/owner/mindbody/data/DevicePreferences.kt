@@ -22,6 +22,7 @@ class DevicePreferences(private val context: Context) {
     companion object {
         const val DEFAULT_BEDTIME_HOUR = 23
         const val DEFAULT_WAKE_HOUR = 7
+        const val DEFAULT_BLE_NIGHTLY_SCHEDULE_ENABLED = true
     }
 
     private val deviceIdKey = stringPreferencesKey("polar_device_id")
@@ -31,6 +32,10 @@ class DevicePreferences(private val context: Context) {
     private val batteryInputMaxKey = intPreferencesKey("battery_input_max")
     private val bedtimeHourKey = intPreferencesKey("ble_bedtime_hour")
     private val wakeHourKey = intPreferencesKey("ble_wake_hour")
+    private val bleNightlyScheduleEnabledKey = booleanPreferencesKey("ble_nightly_schedule_enabled")
+    /** CDM 返回的 association id；0 表示未关联，-1 表示已关联但 API 26–32 无 id */
+    private val companionAssociationIdKey = intPreferencesKey("companion_association_id")
+    private val companionDeviceMacKey = stringPreferencesKey("companion_device_mac")
 
     val savedDeviceId: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[deviceIdKey]
@@ -79,6 +84,18 @@ class DevicePreferences(private val context: Context) {
         prefs[wakeHourKey] ?: DEFAULT_WAKE_HOUR
     }
 
+    val bleNightlyScheduleEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[bleNightlyScheduleEnabledKey] ?: DEFAULT_BLE_NIGHTLY_SCHEDULE_ENABLED
+    }
+
+    val companionAssociationId: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[companionAssociationIdKey] ?: 0
+    }
+
+    val companionDeviceMac: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[companionDeviceMacKey]
+    }
+
     suspend fun setBatteryInputMin(min: Int) {
         context.dataStore.edit { prefs ->
             prefs[batteryInputMinKey] = min
@@ -100,6 +117,30 @@ class DevicePreferences(private val context: Context) {
     suspend fun setWakeHour(hour: Int) {
         context.dataStore.edit { prefs ->
             prefs[wakeHourKey] = hour.coerceIn(0, 23)
+        }
+    }
+
+    suspend fun setBleNightlyScheduleEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[bleNightlyScheduleEnabledKey] = enabled
+        }
+    }
+
+    suspend fun setCompanionAssociation(associationId: Int, deviceMac: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[companionAssociationIdKey] = associationId
+            if (deviceMac.isNullOrBlank()) {
+                prefs.remove(companionDeviceMacKey)
+            } else {
+                prefs[companionDeviceMacKey] = deviceMac
+            }
+        }
+    }
+
+    suspend fun clearCompanionAssociation() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(companionAssociationIdKey)
+            prefs.remove(companionDeviceMacKey)
         }
     }
 

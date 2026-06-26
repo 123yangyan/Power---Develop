@@ -251,7 +251,7 @@ flowchart TB
 ## 相关文档
 
 - [README.md](./README.md) — 开发环境、运行步骤、项目结构
-- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — 已实现功能施工清单（Agent 必读，不含待做项）
+- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — 已实现功能总索引（Agent 必读）；分清单 [`docs/feature-ledger/`](docs/feature-ledger/)
 - [PRODUCT_EMOTION_DESIGN.md](./PRODUCT_EMOTION_DESIGN.md) — 情绪角色化 UI 与认知心理学设计指南
 - [主路线图 Plan](../.cursor/plans/loop心情ai产品规划_9d502bd3.plan.md) — 总体愿景、API/数据模型
 - [统一存储核心 Plan](../.cursor/plans/统一存储核心模块_5f5a20f2.plan.md) — P0 已完成

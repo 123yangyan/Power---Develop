@@ -6,6 +6,7 @@ import com.owner.mindbody.data.storage.AppStorage
 import com.owner.mindbody.util.AppLogger
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.impl.utils.CaloriesType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -92,20 +93,21 @@ class DeviceSyncManager(
             syncMutex.withLock {
                 _syncStatus.value = DeviceSyncStatus.SYNCING
                 _lastSyncError.value = null
-                runCatching { syncAll(deviceId) }
-                    .onSuccess { completed ->
-                        if (completed) {
-                            _syncStatus.value = DeviceSyncStatus.SUCCESS
-                            AppLogger.i(TAG, "Device sync completed successfully")
-                        } else {
-                            _syncStatus.value = DeviceSyncStatus.IDLE
-                        }
+                try {
+                    val completed = syncAll(deviceId)
+                    if (completed) {
+                        _syncStatus.value = DeviceSyncStatus.SUCCESS
+                        AppLogger.i(TAG, "Device sync completed successfully")
+                    } else {
+                        _syncStatus.value = DeviceSyncStatus.IDLE
                     }
-                    .onFailure {
-                        _syncStatus.value = DeviceSyncStatus.FAILED
-                        _lastSyncError.value = it.message
-                        AppLogger.e(TAG, "Device sync failed", it)
-                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _syncStatus.value = DeviceSyncStatus.FAILED
+                    _lastSyncError.value = e.message
+                    AppLogger.e(TAG, "Device sync failed", e)
+                }
             }
         }
     }

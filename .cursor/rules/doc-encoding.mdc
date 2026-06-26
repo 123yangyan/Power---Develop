@@ -13,6 +13,7 @@ alwaysApply: true
 - `.cursor/plans/*.plan.md`
 - `.cursor/plans/*.md`
 - `mindbody-android/FEATURE-LEDGER.md`
+- `mindbody-android/docs/feature-ledger/*.md`
 - `mindbody-android/PRODUCT.md`
 - `mindbody-android/README.md`
 - 根目录 `README.md`

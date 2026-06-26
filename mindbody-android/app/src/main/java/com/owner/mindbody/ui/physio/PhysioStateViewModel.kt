@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.data.LlmFeedbackEntry
 import com.owner.mindbody.data.PhysioStateSummary
+import com.owner.mindbody.notification.PhysioNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -47,6 +48,7 @@ class PhysioStateViewModel(application: Application) : AndroidViewModel(applicat
         )
 
     private var pollJob: Job? = null
+    private var lastNotifiedLabel: String? = null
 
     fun startPolling() {
         if (pollJob?.isActive == true) return
@@ -82,6 +84,7 @@ class PhysioStateViewModel(application: Application) : AndroidViewModel(applicat
                     val summary = parsePhysioStateSummary(body)
                     if (summary != null) {
                         storage.updatePhysioState(summary)
+                        maybeNotifyAlert(summary)
                     }
 
                     val feedback = parseFeedbackHistory(body)
@@ -95,8 +98,39 @@ class PhysioStateViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun maybeNotifyAlert(summary: PhysioStateSummary) {
+        val label = summary.stateLabel
+        if (label !in ALERT_LABELS) {
+            lastNotifiedLabel = null
+            return
+        }
+        if (label == lastNotifiedLabel) return
+
+        val message = summary.llmMessage?.takeIf { it.isNotBlank() } ?: defaultAlertMessage(label)
+        val notificationId = summary.windowId
+            ?.let { (it % Int.MAX_VALUE).toInt() }
+            ?.takeIf { it != 0 }
+            ?: NOTIFICATION_FALLBACK_ID
+
+        PhysioNotificationManager.show(
+            context = getApplication(),
+            notificationId = notificationId,
+            stateLabel = label,
+            message = message
+        )
+        lastNotifiedLabel = label
+    }
+
+    private fun defaultAlertMessage(stateLabel: String): String = when (stateLabel) {
+        "high_anxiety" -> "生理指标显示高度焦虑倾向，建议暂停活动并关注当下感受。"
+        "anxious" -> "生理指标显示焦虑倾向，建议适当休息。"
+        else -> "检测到轻度应激反应，建议适当休息。"
+    }
+
     companion object {
         private const val POLL_INTERVAL_MS = 30_000L
+        private const val NOTIFICATION_FALLBACK_ID = 3001
+        private val ALERT_LABELS = setOf("elevated", "anxious", "high_anxiety")
     }
 }
 

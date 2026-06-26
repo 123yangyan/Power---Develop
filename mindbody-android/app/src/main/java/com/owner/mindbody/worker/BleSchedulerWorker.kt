@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 夜间自动断开 BLE、晨间自动重连。
- * 链式 OneTimeWork 调度：默认 23:00 断开 → 07:00 重连 → 循环（可在设备设置页修改）。
+ * 链式 OneTimeWork 调度：默认 23:00 断开 → 07:00 重连 → 循环（可在设备设置页修改或关闭）。
  */
 class BleSchedulerWorker(
     context: Context,
@@ -31,6 +31,10 @@ class BleSchedulerWorker(
 
         return try {
             val prefs = app.devicePreferences
+            if (!prefs.bleNightlyScheduleEnabled.first()) {
+                AppLogger.i(TAG, "Nightly schedule disabled, skip action=$action")
+                return Result.success()
+            }
             when (action) {
                 ACTION_DISCONNECT -> {
                     val wakeHour = prefs.wakeHour.first()
@@ -84,6 +88,28 @@ class BleSchedulerWorker(
         private const val KEY_ACTION = "action"
 
         /**
+         * 按用户偏好与当前时刻，排程最近一次的断联或重连任务。
+         * 应用冷启动时用 KEEP 避免覆盖已排队的下一次任务；用户改时间或开关时用 REPLACE。
+         */
+        suspend fun scheduleFromPreferences(
+            context: Context,
+            policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE
+        ) {
+            val app = context.applicationContext as? MindBodyApplication ?: return
+            val prefs = app.devicePreferences
+            if (!prefs.bleNightlyScheduleEnabled.first()) {
+                if (policy == ExistingWorkPolicy.REPLACE) {
+                    cancel(context)
+                }
+                return
+            }
+            val bedtimeHour = prefs.bedtimeHour.first()
+            val wakeHour = prefs.wakeHour.first()
+            val (action, targetHour) = nextScheduledEvent(bedtimeHour, wakeHour)
+            scheduleNext(context, action, targetHour, policy)
+        }
+
+        /**
          * 启动或续接调度链。应用启动时用 KEEP 避免覆盖已排队的下一次任务。
          */
         fun scheduleNext(
@@ -117,6 +143,21 @@ class BleSchedulerWorker(
         fun cancel(context: Context) {
             WorkManager.getInstance(context.applicationContext)
                 .cancelUniqueWork(UNIQUE_WORK_NAME)
+        }
+
+        /** 根据当前时刻，返回下一次应执行的 action 与目标整点。 */
+        internal fun nextScheduledEvent(
+            bedtimeHour: Int,
+            wakeHour: Int,
+            now: ZonedDateTime = ZonedDateTime.now()
+        ): Pair<String, Int> {
+            val disconnectDelay = delayUntilNextHour(bedtimeHour, now)
+            val reconnectDelay = delayUntilNextHour(wakeHour, now)
+            return if (disconnectDelay <= reconnectDelay) {
+                ACTION_DISCONNECT to bedtimeHour
+            } else {
+                ACTION_RECONNECT to wakeHour
+            }
         }
 
         private fun hourForAction(action: String): Int = when (action) {

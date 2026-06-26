@@ -69,5 +69,5 @@ app/src/main/java/com/owner/mindbody/
 ## 相关文档
 
 - [PRODUCT.md](./PRODUCT.md) — 产品说明与路线图
-- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — **已实现功能**施工清单（Agent 执行 mindbody-android 任务前必读）
+- [FEATURE-LEDGER.md](./FEATURE-LEDGER.md) — **已实现功能**总索引（Agent 必读）；详情见 [`docs/feature-ledger/`](docs/feature-ledger/)
 - [`.cursor/plans/`](../.cursor/plans/) — Phase 待做特性设计

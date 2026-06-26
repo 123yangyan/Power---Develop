@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -15,15 +14,20 @@ import androidx.core.app.NotificationCompat
 import com.owner.mindbody.MainActivity
 import com.owner.mindbody.MindBodyApplication
 import com.owner.mindbody.R
+import com.owner.mindbody.keepalive.KeepAliveConfig
+import com.owner.mindbody.keepalive.KeepAliveCoordinator
+import com.owner.mindbody.util.AppLogger
+import com.owner.mindbody.util.CompanionDeviceHelper
+import com.owner.mindbody.util.PowerKeepAlive
 import com.owner.mindbody.worker.PpiStreamWorker
 import com.owner.mindbody.worker.PpiStreamWorker.Companion.StreamAttemptResult
-import com.owner.mindbody.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -35,7 +39,9 @@ class HrStreamService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var streamLoopJob: Job? = null
+    private var heartbeatJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var heartbeatSeq = 0
 
     /**
      * 记录服务启动时刻作为 BLE warm-up 基准。
@@ -48,24 +54,19 @@ class HrStreamService : Service() {
         private const val CHANNEL_ID = "hr_stream"
         private const val NOTIFICATION_ID = 1001
         private const val WAKE_LOCK_TAG = "MindBody:HrStream"
+        private const val TAG = "KeepAlive"
 
-        fun start(context: Context) {
-            val intent = Intent(context, HrStreamService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        }
-
-        fun stop(context: Context) {
-            context.stopService(Intent(context, HrStreamService::class.java))
-        }
+        @Volatile
+        var isRunning: Boolean = false
+            private set
     }
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
+        KeepAliveCoordinator.setForegroundRunning(true)
         serviceStartedAtMs = System.currentTimeMillis()
+        AppLogger.i(TAG, "HrStreamService onCreate")
         createChannel()
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -78,19 +79,43 @@ class HrStreamService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
         acquireWakeLock()
+        startHeartbeatLoopIfNeeded()
+        verifyCompanionAssociationAsync()
+    }
+
+    private fun verifyCompanionAssociationAsync() {
+        serviceScope.launch {
+            val app = applicationContext as? MindBodyApplication ?: return@launch
+            val deviceId = app.devicePreferences.savedDeviceId.first()
+            val result = CompanionDeviceHelper.verifyAssociation(app, deviceId)
+            if (result.valid) {
+                AppLogger.i(
+                    TAG,
+                    "CDM verified mac=${result.macAddress} associationId=${result.associationId}",
+                )
+            } else {
+                AppLogger.w(TAG, "CDM not associated: ${result.message}")
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        AppLogger.d(TAG, "HrStreamService onStartCommand startId=$startId flags=$flags")
         startStreamLoopIfNeeded()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        AppLogger.i(TAG, "HrStreamService onDestroy")
+        heartbeatJob?.cancel()
+        heartbeatJob = null
         streamLoopJob?.cancel()
         streamLoopJob = null
         releaseWakeLock()
+        isRunning = false
+        KeepAliveCoordinator.setForegroundRunning(false)
         super.onDestroy()
         val app = applicationContext as? MindBodyApplication ?: return
         serviceScope.launch {
@@ -118,6 +143,38 @@ class HrStreamService : Service() {
                 delay(PpiStreamWorker.STREAM_INTERVAL_MS)
             }
         }
+    }
+
+    private fun startHeartbeatLoopIfNeeded() {
+        if (heartbeatJob?.isActive == true) return
+        heartbeatJob = serviceScope.launch {
+            while (isActive) {
+                emitHeartbeat()
+                delay(KeepAliveConfig.HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun emitHeartbeat() {
+        val app = applicationContext as? MindBodyApplication ?: return
+        val polar = app.polarBleManager
+        val bleState = polar.connectionState.value
+        val wakeHeld = wakeLock?.isHeld == true
+        val batteryExempt = PowerKeepAlive.isIgnoringBatteryOptimizations(this)
+        val lastHrMs = polar.lastHrSampleMs.value
+        val lastHrAgeMs = if (lastHrMs > 0L) {
+            System.currentTimeMillis() - lastHrMs
+        } else {
+            null
+        }
+        heartbeatSeq += 1
+        KeepAliveCoordinator.updateHeartbeat(
+            bleState = bleState,
+            wakeLockHeld = wakeHeld,
+            batteryExempt = batteryExempt,
+            heartbeatSeq = heartbeatSeq,
+            lastHrAgeMs = lastHrAgeMs,
+        )
     }
 
     private fun acquireWakeLock() {
