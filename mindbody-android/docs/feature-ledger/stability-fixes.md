@@ -102,3 +102,14 @@
 - **问题** 在线流 `.catch` 将 SDK Channel 关闭记 ERROR；`scheduleSync()` runCatching 误报 FAILED。
 - **修复** `logOnlineStreamError()` WARN/ERROR 分级；显式重抛 Kotlin CE；scheduleSync try/catch 重抛 CE。
 - **文件** `PolarBleManager.kt`、`DeviceSyncManager.kt`
+
+---
+
+### F-BUG-012 意外断联后自动重连静默失败
+来源: 用户反馈 · 2026-06-28
+
+- **问题** `deviceDisconnected` 停 FGS 后 `scheduleReconnect` 无 WakeLock，SDK GATT 握手被系统挂起，`deviceConnected` 回调丢失，需用户进心率页才重连。
+- **修复** `scheduleReconnect` 在 `connectToDevice` 前 `KeepAliveCoordinator.start(RECONNECTING)`；FGS 心跳连续 2 次 `DISCONNECTED` 时 `reconnectNowIfIdle()` 兜底。
+- **文件** `PolarBleManager.kt`、`HrStreamService.kt`、`KeepAliveReason.kt`
+
+---

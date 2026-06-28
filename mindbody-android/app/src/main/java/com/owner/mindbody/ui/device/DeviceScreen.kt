@@ -39,6 +39,8 @@ import com.owner.mindbody.BuildConfig
 import com.owner.mindbody.data.sync.DeviceSyncStatus
 import com.owner.mindbody.polar.ConnectionState
 import com.owner.mindbody.polar.ScannedDevice
+import com.owner.mindbody.ui.components.BatteryDisplayStyle
+import com.owner.mindbody.ui.components.BatteryLevelDisplay
 import com.owner.mindbody.ui.components.PremiumCard
 import com.owner.mindbody.ui.components.SectionHeader
 import com.owner.mindbody.ui.mood.MoodRecordViewModel
@@ -65,6 +67,8 @@ fun DeviceScreen(
     val connectedId by viewModel.connectedDeviceId.collectAsState()
     val scanned by viewModel.scannedDevices.collectAsState()
     val battery by viewModel.batteryLevel.collectAsState()
+    val batteryUpdatedAt by viewModel.batteryLevelTimestamp.collectAsState()
+    val chargeState by viewModel.chargeState.collectAsState()
     val ftuDone by viewModel.ftuDone.collectAsState()
     val status by viewModel.statusMessage.collectAsState()
     val savedId by viewModel.savedDeviceId.collectAsState()
@@ -126,16 +130,11 @@ fun DeviceScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(text = "电量", style = StatLabel)
-                    val level = battery
-                    val batteryText = if (level != null) "$level%" else "—"
-                    val batteryColor = when {
-                        level == null -> MindBodyColors.OnBackgroundSecondary
-                        level <= 20 -> MindBodyColors.HeartRed
-                        else -> MindBodyColors.Emerald
-                    }
-                    Text(
-                        text = batteryText,
-                        style = StatValue.copy(color = batteryColor, fontSize = CardTitle.fontSize)
+                    BatteryLevelDisplay(
+                        level = battery,
+                        updatedAtMs = batteryUpdatedAt,
+                        chargeState = chargeState,
+                        style = BatteryDisplayStyle.Settings,
                     )
                 }
                 status?.let {

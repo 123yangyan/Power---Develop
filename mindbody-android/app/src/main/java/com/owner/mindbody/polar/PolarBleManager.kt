@@ -155,6 +155,13 @@ class PolarBleManager(
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
 
+    /** 最近一次有效电量回调的 epoch 毫秒；0 表示尚无数据。 */
+    private val _batteryLevelTimestamp = MutableStateFlow(0L)
+    val batteryLevelTimestamp: StateFlow<Long> = _batteryLevelTimestamp.asStateFlow()
+
+    private val _chargeState = MutableStateFlow<ChargeState?>(null)
+    val chargeState: StateFlow<ChargeState?> = _chargeState.asStateFlow()
+
     // 电量校准参数：手表实际报告的 [inputMin, inputMax] 映射到显示 [0, 100]
     // 例如 Polar Loop 报告 50~100，则 inputMin=50, inputMax=100
     // 默认 0~100 不做校准
@@ -510,6 +517,23 @@ class PolarBleManager(
         )
     }
 
+    /**
+     * 心跳看门狗：FGS 仍在跑但 BLE 长时间 DISCONNECTED 时，补偿触发一次重连。
+     * 仅在 PERSISTENT、非用户主动断、无进行中的 reconnectJob 时生效。
+     */
+    fun reconnectNowIfIdle() {
+        if (_connectionMode.value != ConnectionMode.PERSISTENT) return
+        if (userInitiatedDisconnect) return
+        if (_connectionState.value != ConnectionState.DISCONNECTED) return
+        if (reconnectJob?.isActive == true) return
+        scope.launch {
+            val savedId = devicePreferences.savedDeviceId.first()?.takeIf { it.isNotBlank() }
+                ?: return@launch
+            AppLogger.w(TAG, "reconnectNowIfIdle: watchdog triggering reconnect id=$savedId")
+            scheduleReconnect(savedId)
+        }
+    }
+
     private fun scheduleReconnect(deviceId: String) {
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
@@ -519,6 +543,7 @@ class PolarBleManager(
                 _connectionState.value == ConnectionState.DISCONNECTED
             ) {
                 setStatus("正在尝试重新连接…")
+                KeepAliveCoordinator.start(appContext, KeepAliveReason.RECONNECTING)
                 connectToDevice(deviceId)
             }
         }
@@ -831,6 +856,8 @@ class PolarBleManager(
         _currentHr.value = null
         _lastHrSampleMs.value = 0L
         _batteryLevel.value = null // 断开时清除电量，避免旧值残留
+        _batteryLevelTimestamp.value = 0L
+        _chargeState.value = null
         hrFeatureReady = false
         deviceSyncManager.resetFeatureFlags()
         stopHrStreaming()
@@ -889,6 +916,12 @@ class PolarBleManager(
                     startPpiStreaming(identifier)
                 }
             }
+            PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO -> {
+                // SDK onStart 可能已 emit 缓存值，但 batteryLevelReceived 尚未更新时间戳
+                if (_batteryLevel.value != null && _batteryLevelTimestamp.value == 0L) {
+                    _batteryLevelTimestamp.value = System.currentTimeMillis()
+                }
+            }
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TRAINING_DATA -> {
@@ -911,10 +944,12 @@ class PolarBleManager(
         }
         AppLogger.d(TAG, "batteryLevelReceived id=$identifier calibratedLevel=$calibrated")
         _batteryLevel.value = calibrated
+        _batteryLevelTimestamp.value = System.currentTimeMillis()
     }
 
     override fun batteryChargingStatusReceived(identifier: String, chargingStatus: ChargeState) {
         AppLogger.d(TAG, "batteryChargingStatusReceived id=$identifier status=$chargingStatus")
+        _chargeState.value = chargingStatus
     }
 
     override fun powerSourcesStateReceived(identifier: String, powerSourcesState: PowerSourcesState) {

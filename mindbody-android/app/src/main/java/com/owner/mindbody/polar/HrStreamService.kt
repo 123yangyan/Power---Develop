@@ -42,6 +42,7 @@ class HrStreamService : Service() {
     private var heartbeatJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var heartbeatSeq = 0
+    private var consecutiveDisconnectedHeartbeats = 0
 
     /**
      * 记录服务启动时刻作为 BLE warm-up 基准。
@@ -55,6 +56,8 @@ class HrStreamService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val WAKE_LOCK_TAG = "MindBody:HrStream"
         private const val TAG = "KeepAlive"
+        /** 连续 DISCONNECTED 心跳达到此值（约 2 min）时触发补偿重连。 */
+        private const val DISCONNECTED_RECONNECT_THRESHOLD = 2
 
         @Volatile
         var isRunning: Boolean = false
@@ -175,6 +178,23 @@ class HrStreamService : Service() {
             heartbeatSeq = heartbeatSeq,
             lastHrAgeMs = lastHrAgeMs,
         )
+        when (bleState) {
+            ConnectionState.DISCONNECTED -> {
+                consecutiveDisconnectedHeartbeats += 1
+                if (consecutiveDisconnectedHeartbeats >= DISCONNECTED_RECONNECT_THRESHOLD) {
+                    consecutiveDisconnectedHeartbeats = 0
+                    AppLogger.w(
+                        TAG,
+                        "heartbeat watchdog: ble=DISCONNECTED threshold reached, requesting reconnect",
+                    )
+                    polar.reconnectNowIfIdle()
+                }
+            }
+            ConnectionState.CONNECTED,
+            ConnectionState.CONNECTING,
+            ConnectionState.BLE_OFF,
+            -> consecutiveDisconnectedHeartbeats = 0
+        }
     }
 
     private fun acquireWakeLock() {

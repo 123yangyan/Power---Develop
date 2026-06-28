@@ -20,6 +20,7 @@ import com.owner.mindbody.polar.ScannedDevice
 import com.owner.mindbody.util.CompanionDeviceHelper
 import com.owner.mindbody.worker.BleSchedulerWorker
 import com.owner.mindbody.worker.SyncWorker
+import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
 import androidx.work.ExistingWorkPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,6 +53,12 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val batteryLevel: StateFlow<Int?> = polar.batteryLevel
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val batteryLevelTimestamp: StateFlow<Long> = polar.batteryLevelTimestamp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    val chargeState: StateFlow<ChargeState?> = polar.chargeState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val ftuDone: StateFlow<Boolean> = polar.ftuDone

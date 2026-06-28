@@ -6,7 +6,7 @@
 >
 > 规则：[`feature-ledger.mdc`](../.cursor/rules/feature-ledger.mdc) · 产品：[`PRODUCT.md`](PRODUCT.md)
 
-**最后更新**：2026-06-26 · **已实现 41 条 + 稳定性 11 条**
+**最后更新**：2026-06-28 · **已实现 41 条 + 稳定性 12 条**
 
 ---
 
@@ -81,11 +81,13 @@
 | F-BUG-009 | 自动连卡死 | [bugs](docs/feature-ledger/stability-fixes.md) | GATT 清理 + 25s 看门狗 |
 | F-BUG-010 | 主线程网络/误停 FGS | [bugs](docs/feature-ledger/stability-fixes.md) | IO 轮询 + 条件 stop FGS |
 | F-BUG-011 | CE 误处理 | [bugs](docs/feature-ledger/stability-fixes.md) | 在线流/scheduleSync 重抛 CE |
+| F-BUG-012 | 断联重连静默失败 | [bugs](docs/feature-ledger/stability-fixes.md) | 重连前重启 FGS + 心跳看门狗 |
 
 ---
 
 ## 变更记录
 
+- 2026-06-28：F-BUG-012 意外断联后自动重连 — 重连前重启 FGS（RECONNECTING）+ 心跳看门狗 `reconnectNowIfIdle`
 - 2026-06-26：F-P1-007 设置次级页 — 采集策略/心情提醒/后台保活迁入独立界面，主屏仅保留单行入口
 - 2026-06-26：F-P1-006 心率页头部精简（去页眉/角标、统一 BLE 四档文案、Hero 下电量行）
 - 2026-06-26：F-P2-UI-001 状态页指标区拆分 + HRV 五档动态色

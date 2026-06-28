@@ -25,11 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.owner.mindbody.polar.ConnectionState
+import com.owner.mindbody.ui.components.BatteryDisplayStyle
+import com.owner.mindbody.ui.components.BatteryLevelDisplay
 import com.owner.mindbody.ui.components.HeroIndicator
 import com.owner.mindbody.ui.components.MicroGrid
 import com.owner.mindbody.ui.components.MicroGridItem
@@ -52,6 +53,8 @@ fun HeartRateScreen(
     val currentHr by viewModel.currentHr.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val batteryLevel by viewModel.batteryLevel.collectAsState()
+    val batteryUpdatedAt by viewModel.batteryLevelTimestamp.collectAsState()
+    val chargeState by viewModel.chargeState.collectAsState()
     val stats by viewModel.todayStats.collectAsState()
     val chartState by viewModel.chartState.collectAsState()
     var showChart by remember { mutableStateOf(false) }
@@ -70,18 +73,15 @@ fun HeartRateScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (connectionState == ConnectionState.CONNECTED && batteryLevel != null) {
-            val lowBattery = batteryLevel!! <= 20
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Start
             ) {
-                Text(
-                    text = "电量 ${batteryLevel}%",
-                    style = StatLabel.copy(
-                        color = if (lowBattery) MindBodyColors.HeartRed else MindBodyColors.Emerald,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                BatteryLevelDisplay(
+                    level = batteryLevel,
+                    updatedAtMs = batteryUpdatedAt,
+                    chargeState = chargeState,
+                    style = BatteryDisplayStyle.Compact,
                 )
             }
         }

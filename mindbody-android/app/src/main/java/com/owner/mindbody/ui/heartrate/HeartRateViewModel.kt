@@ -23,6 +23,7 @@ import com.owner.mindbody.ui.components.ChartValuePoint
 import com.owner.mindbody.ui.components.ChartWindowPreset
 import com.owner.mindbody.ui.components.MindBodyChartState
 import com.owner.mindbody.ui.components.SplineChartUtils
+import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,6 +70,12 @@ class HeartRateViewModel(application: Application) : AndroidViewModel(applicatio
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionState.DISCONNECTED)
 
     val batteryLevel: StateFlow<Int?> = app.polarBleManager.batteryLevel
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val batteryLevelTimestamp: StateFlow<Long> = app.polarBleManager.batteryLevelTimestamp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    val chargeState: StateFlow<ChargeState?> = app.polarBleManager.chargeState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /** 实时流 + 24/7 离线样本合并，供图表无缝展示 */

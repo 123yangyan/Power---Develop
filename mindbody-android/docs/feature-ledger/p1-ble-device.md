@@ -10,10 +10,10 @@ Plan: phase1-android-polar · 更新: 2026-06-23
 - **目的** Polar Loop 扫描、连接、断开与状态流；冷启动自动连已保存设备。
 - **入口** `MindBodyApplication.polarBleManager`；`tryAutoConnectSavedDevice()`
 - **文件** `polar/PolarBleManager.kt`、`ui/device/AutoConnectEffect.kt`、`DeviceScreen.kt`、`DeviceViewModel.kt`
-- **约定** SDK 8.0.0；扫描 15s 超时后直连；直连前 `disconnectFromDevice`+1s 清 GATT；25s 看门狗；蓝牙开→关→开时 `force=true` 重试。
-- **验收** 冷启动可自动连；进程异常退出后重进可恢复；常连接断线约 3s 重连；短连接用户断开后不重连。
+- **约定** SDK 8.0.0；扫描 15s 超时后直连；直连前 `disconnectFromDevice`+1s 清 GATT；25s 看门狗；蓝牙开→关→开时 `force=true` 重试；意外断联后 `scheduleReconnect` 先 `KeepAliveCoordinator.start(RECONNECTING)` 再 `connectToDevice`，避免无 WakeLock 时 GATT 握手被系统挂起。
+- **验收** 冷启动可自动连；进程异常退出后重进可恢复；常连接断线约 3s 重连且 FGS 在重连前恢复；短连接用户断开后不重连。
 
-> 2026-06-23 残留 GATT 清理 + 25s 看门狗 (#ble-auto-connect-watchdog) · 2026-06-13 Phase 1 初始 (#phase1-android-polar)
+> 2026-06-28 断联重连前重启 FGS + 心跳看门狗 (#ble-reconnect-keepalive) · 2026-06-23 残留 GATT 清理 + 25s 看门狗 (#ble-auto-connect-watchdog) · 2026-06-13 Phase 1 初始 (#phase1-android-polar)
 
 ---
 
@@ -30,14 +30,14 @@ Plan: phase1-android-polar · 更新: 2026-06-13
 ---
 
 ### F-P1-003 实时心率流 + 前台服务
-Plan: phase1-android-polar · 更新: 2026-06-26
+Plan: phase1-android-polar · 更新: 2026-06-28
 
 - **目的** `startHrStreaming` 持续采集并落库，后台保活。
-- **文件** `keepalive/KeepAliveCoordinator.kt`、`KeepAliveConfig.kt`、`RestartProtection.kt`、`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`、`util/PowerKeepAlive.kt`、`ui/device/DeviceScreen.kt`、`ui/heartrate/HeartRateScreen.kt`
-- **约定** HR 经 `storage.hr.saveSample`→buffer；`KeepAliveCoordinator` 为 FGS 唯一启停入口；60s heartbeat 日志；`RestartProtection` 60s 内超 10 次启动冷却 5min。
-- **验收** 息屏后 FGS 常驻且 90s PPI 推流不中断；设备页卡片 FGS/BLE/心跳状态正确。
+- **文件** `keepalive/KeepAliveCoordinator.kt`、`KeepAliveConfig.kt`、`RestartProtection.kt`、`keepalive/KeepAliveReason.kt`、`polar/PolarBleManager.kt`、`polar/HrStreamService.kt`、`util/PowerKeepAlive.kt`、`ui/device/DeviceScreen.kt`、`ui/heartrate/HeartRateScreen.kt`
+- **约定** HR 经 `storage.hr.saveSample`→buffer；`KeepAliveCoordinator` 为 FGS 唯一启停入口；60s heartbeat 日志；`RestartProtection` 60s 内超 10 次启动冷却 5min；断联重连前以 `RECONNECTING` 重启 FGS；FGS 心跳连续 2 次 `ble=DISCONNECTED` 时 `reconnectNowIfIdle()` 补偿重连。
+- **验收** 息屏后 FGS 常驻且 90s PPI 推流不中断；设备页卡片 FGS/BLE/心跳状态正确；意外断联后无需用户进心率页即可在约 3s 内恢复连接。
 
-> 2026-06-26 KeepAliveCoordinator 统一启停 (#background-keepalive-coordinator) · 2026-06-13 HR 流 + FGS (#phase1-android-polar)
+> 2026-06-28 断联重连 FGS + 心跳看门狗 (#ble-reconnect-keepalive) · 2026-06-26 KeepAliveCoordinator 统一启停 (#background-keepalive-coordinator) · 2026-06-13 HR 流 + FGS (#phase1-android-polar)
 
 ---
 

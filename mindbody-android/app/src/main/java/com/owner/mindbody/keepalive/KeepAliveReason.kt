@@ -4,6 +4,7 @@ package com.owner.mindbody.keepalive
 enum class KeepAliveReason {
     DEVICE_CONNECTED,
     DEVICE_DISCONNECTED,
+    RECONNECTING,
     HEART_RATE_SCREEN,
     USER_DISCONNECT,
     BLE_OFF,
